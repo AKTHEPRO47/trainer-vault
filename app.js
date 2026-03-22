@@ -581,73 +581,37 @@ function loadCardImage(card) {
   // Show loading state
   showImagePlaceholder('Loading card image...');
 
-  // Primary: search by name + set name to get the correct card art
-  const nameQuery = encodeURIComponent(`name:"${card.name}" set.name:"${card.set}"`);
-  fetch(`https://api.pokemontcg.io/v2/cards?q=${nameQuery}&pageSize=10&select=id,name,number,set,images,supertype,subtypes`)
+  // Fast query: number + name (both indexed fields)
+  const num = card.cardNumber.split('/')[0].trim();
+  const query = encodeURIComponent(`number:"${num}" name:"${card.name}"`);
+  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=id,name,number,images`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        // Try to find exact match by card number
-        const num = card.cardNumber.split('/')[0].trim();
-        let match = data.data.find(c => c.number === num);
-        // Then try matching trainer supertype (Full Art trainers)
-        if (!match) match = data.data.find(c => c.supertype === 'Trainer');
-        if (!match) match = data.data[0];
+        const match = data.data[0];
         const imgUrl = match.images.large || match.images.small;
         imageCache[card.id] = imgUrl;
         if (currentModalCard && currentModalCard.id === card.id) {
           showCardImage(imgUrl);
         }
       } else {
-        // Fallback: search by name only
+        // Fallback: name only
         fetchImageByName(card);
       }
     })
     .catch(() => {
-      // On error, try name-only fallback
       fetchImageByName(card);
     });
 }
 
 function fetchImageByName(card) {
-  const query = encodeURIComponent(`name:"${card.name}" supertype:Trainer`);
-  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=20&select=id,name,number,set,images`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.data && data.data.length > 0) {
-        // Try matching set name first
-        let match = data.data.find(c => c.set && c.set.name === card.set);
-        // Then try matching card number
-        if (!match) {
-          const num = card.cardNumber.split('/')[0].trim();
-          match = data.data.find(c => c.number === num);
-        }
-        if (!match) match = data.data[0];
-        const imgUrl = match.images.large || match.images.small;
-        imageCache[card.id] = imgUrl;
-        if (currentModalCard && currentModalCard.id === card.id) {
-          showCardImage(imgUrl);
-        }
-      } else {
-        // Last resort: search by name without supertype filter
-        fetchImageByNameOnly(card);
-      }
-    })
-    .catch(() => {
-      imageCache[card.id] = null;
-      if (currentModalCard && currentModalCard.id === card.id) {
-        showImagePlaceholder('Could not load image');
-      }
-    });
-}
-
-function fetchImageByNameOnly(card) {
   const query = encodeURIComponent(`name:"${card.name}"`);
-  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=15&select=id,name,number,set,images`)
+  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=10&select=id,name,number,set,images`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        let match = data.data.find(c => c.set && c.set.name === card.set);
+        const num = card.cardNumber.split('/')[0].trim();
+        let match = data.data.find(c => c.number === num);
         if (!match) match = data.data[0];
         const imgUrl = match.images.large || match.images.small;
         imageCache[card.id] = imgUrl;
@@ -657,7 +621,7 @@ function fetchImageByNameOnly(card) {
       } else {
         imageCache[card.id] = null;
         if (currentModalCard && currentModalCard.id === card.id) {
-          showImagePlaceholder('No image found for this card');
+          showImagePlaceholder('No image found');
         }
       }
     })
