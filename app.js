@@ -12,6 +12,9 @@ let searchTimeout = null;
 let saveTimeout = null;
 let imageCache = {}; // cardId -> image URL
 let adminToken = null;
+let bulkMode = false;
+let bulkSelected = new Set();
+let unlockedAchievements = {};
 
 const CONDITIONS = ['Mint','NM','LP','MP','HP','HP+'];
 const ERA_ORDER = ['Black & White','XY','Sun & Moon','Sword & Shield','Scarlet & Violet','Mega Evolution'];
@@ -30,7 +33,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupGrading();
   setupQuickScan();
   verifyAdminToken();
+  loadAchievements();
   applyFiltersAndRender();
+
+  // Register service worker for PWA / offline support
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 
   // Auto-collapse stats on mobile
   if (window.innerWidth <= 768) {
@@ -104,6 +113,7 @@ let serverSavePending = false;
 function saveCollection() {
   // Always save to localStorage immediately — this is the primary store
   try { localStorage.setItem('trainerVaultCollection', JSON.stringify(collectionState)); } catch(e) {}
+  checkMilestones();
   serverSavePending = true;
   clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
@@ -238,6 +248,11 @@ function applyFiltersAndRender() {
       case 'era': return ERA_ORDER.indexOf(a.era) - ERA_ORDER.indexOf(b.era) || a.set.localeCompare(b.set);
       case 'condition': return (CONDITIONS.indexOf(sa.condition)||99) - (CONDITIONS.indexOf(sb.condition)||99);
       case 'price': return ((sb.purchasePrice||0) - (sa.purchasePrice||0));
+      case 'recent': {
+        const da = sa.purchaseDate || '', db = sb.purchaseDate || '';
+        if (da || db) return db.localeCompare(da);
+        return (sb.inCollection ? 1 : 0) - (sa.inCollection ? 1 : 0);
+      }
       case 'id': return a.id - b.id;
       default: return 0;
     }
@@ -285,7 +300,7 @@ function renderGrid() {
   filteredCards.forEach(card => {
     const st = getCardState(card.id);
     const tile = document.createElement('div');
-    tile.className = 'card-tile glass ' + (st.inCollection ? 'collected' : 'uncollected');
+    tile.className = 'card-tile glass ' + (st.inCollection ? 'collected' : 'uncollected') + (bulkMode && bulkSelected.has(card.id) ? ' bulk-selected' : '');
     tile.dataset.id = card.id;
 
     const eraKey = ERA_KEYS[card.era] || 'bw';
@@ -307,9 +322,15 @@ function renderGrid() {
       </div>
     `;
 
-    // Touch devices: single tap opens modal. Desktop: single click toggles, double-click opens modal
+    // Bulk mode: click selects/deselects. Normal: touch=modal, click=toggle, dblclick=modal
     const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    if (isTouch) {
+    if (bulkMode) {
+      tile.addEventListener('click', () => {
+        if (bulkSelected.has(card.id)) bulkSelected.delete(card.id); else bulkSelected.add(card.id);
+        updateBulkCount();
+        applyFiltersAndRender();
+      });
+    } else if (isTouch) {
       tile.addEventListener('click', () => openModal(card.id));
     } else {
       tile.addEventListener('click', (e) => {
@@ -463,6 +484,14 @@ function renderWantList() {
 }
 
 /* ============================================================
+   ESTIMATED PRICE
+   ============================================================ */
+function getEstimatedPrice(card) {
+  const estimates = { 'Special Illustration Rare': 35, 'Illustration Rare': 12, 'Full Art': 8, 'Rainbow': 15, 'Secret': 10 };
+  return estimates[card.variant] || 5;
+}
+
+/* ============================================================
    STATS
    ============================================================ */
 function updateStats() {
@@ -516,6 +545,10 @@ function updateStats() {
   // Want count
   const wantCount = ALL_CARDS.filter(c => getCardState(c.id).wantList).length;
   document.getElementById('wantCount').textContent = wantCount;
+
+  // Sparkline
+  trackCollectionHistory();
+  renderSparkline();
 }
 
 /* ============================================================
@@ -1119,6 +1152,12 @@ document.addEventListener('keydown', (e) => {
     case 'p':
       toggleChatbot();
       break;
+    case 'b':
+      toggleBulkMode();
+      break;
+    case 's':
+      shareCollection();
+      break;
     case 'escape':
       if (document.getElementById('adminLoginOverlay').classList.contains('open')) closeAdminLogin();
       else if (document.getElementById('adminPanelOverlay').classList.contains('open')) closeAdminPanel();
@@ -1366,6 +1405,224 @@ async function verifyAdminToken() {
     }
   } catch(e) {}
   updateAdminButton();
+}
+
+/* ============================================================
+   ACHIEVEMENTS & MILESTONES
+   ============================================================ */
+const MILESTONES = [
+  { id: 'first', label: 'First Catch!', desc: 'Added your first card', icon: '⭐', check: n => n >= 1 },
+  { id: 'ten', label: 'Getting Started', desc: 'Collected 10 cards', icon: '🔥', check: n => n >= 10 },
+  { id: 'twentyfive', label: 'Quarter Century', desc: 'Collected 25 cards', icon: '💎', check: n => n >= 25 },
+  { id: 'fifty', label: 'Halfway Hero', desc: 'Collected 50 cards', icon: '🏆', check: n => n >= 50 },
+  { id: 'hundred', label: 'Century Club', desc: 'Collected 100 cards', icon: '💯', check: n => n >= 100 },
+  { id: 'twofifty', label: 'Vault Master', desc: 'Collected 250 cards', icon: '👑', check: n => n >= 250 },
+  { id: 'fivehundred', label: 'Legendary Collector', desc: 'All 500+ cards!', icon: '🌟', check: n => n >= 500 },
+];
+
+function loadAchievements() {
+  try {
+    const saved = localStorage.getItem('trainerVaultAchievements');
+    if (saved) unlockedAchievements = JSON.parse(saved);
+  } catch(e) {}
+}
+
+function checkMilestones() {
+  if (!ALL_CARDS.length) return;
+  const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection).length;
+
+  // Count milestones
+  MILESTONES.forEach(m => {
+    if (!unlockedAchievements[m.id] && m.check(collected)) {
+      unlockedAchievements[m.id] = Date.now();
+      localStorage.setItem('trainerVaultAchievements', JSON.stringify(unlockedAchievements));
+      showToast(m.icon + ' ' + m.label, m.desc);
+    }
+  });
+
+  // Set completions
+  const sets = {};
+  ALL_CARDS.forEach(c => {
+    if (!sets[c.set]) sets[c.set] = { total: 0, collected: 0 };
+    sets[c.set].total++;
+    if (getCardState(c.id).inCollection) sets[c.set].collected++;
+  });
+  Object.entries(sets).forEach(([setName, data]) => {
+    const key = 'set_' + setName.replace(/\W+/g, '_');
+    if (!unlockedAchievements[key] && data.collected === data.total && data.total > 0) {
+      unlockedAchievements[key] = Date.now();
+      localStorage.setItem('trainerVaultAchievements', JSON.stringify(unlockedAchievements));
+      showToast('🎉 Set Complete!', setName + ' — All ' + data.total + ' cards!');
+    }
+  });
+
+  // Era completions
+  ERA_ORDER.forEach(era => {
+    const key = 'era_' + era.replace(/\W+/g, '_');
+    if (unlockedAchievements[key]) return;
+    const eraCards = ALL_CARDS.filter(c => c.era === era);
+    const eraCollected = eraCards.filter(c => getCardState(c.id).inCollection).length;
+    if (eraCollected === eraCards.length && eraCards.length > 0) {
+      unlockedAchievements[key] = Date.now();
+      localStorage.setItem('trainerVaultAchievements', JSON.stringify(unlockedAchievements));
+      showToast('🏅 Era Complete!', era + ' — All ' + eraCards.length + ' cards!');
+    }
+  });
+}
+
+/* ============================================================
+   TOAST NOTIFICATIONS
+   ============================================================ */
+function showToast(title, desc) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast glass';
+  toast.innerHTML = `<div class="toast-title">${escapeHtml(title)}</div><div class="toast-desc">${escapeHtml(desc)}</div>`;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  }, 4000);
+}
+
+/* ============================================================
+   BULK SELECT MODE
+   ============================================================ */
+function toggleBulkMode() {
+  bulkMode = !bulkMode;
+  bulkSelected.clear();
+  const bar = document.getElementById('bulkBar');
+  if (bar) bar.classList.toggle('active', bulkMode);
+  updateBulkCount();
+  applyFiltersAndRender();
+}
+
+function updateBulkCount() {
+  const el = document.getElementById('bulkCount');
+  if (el) el.textContent = bulkSelected.size + ' selected';
+}
+
+function bulkMarkCollected() {
+  const count = bulkSelected.size;
+  bulkSelected.forEach(id => { getCardState(id).inCollection = true; });
+  saveCollection();
+  bulkSelected.clear();
+  updateBulkCount();
+  applyFiltersAndRender();
+  showToast('✓ Bulk Collected', count + ' cards marked collected');
+}
+
+function bulkMarkWant() {
+  const count = bulkSelected.size;
+  bulkSelected.forEach(id => { getCardState(id).wantList = true; });
+  saveCollection();
+  bulkSelected.clear();
+  updateBulkCount();
+  applyFiltersAndRender();
+  showToast('♥ Bulk Want List', count + ' cards added to want list');
+}
+
+function bulkRemove() {
+  const count = bulkSelected.size;
+  bulkSelected.forEach(id => { getCardState(id).inCollection = false; });
+  saveCollection();
+  bulkSelected.clear();
+  updateBulkCount();
+  applyFiltersAndRender();
+  showToast('✕ Bulk Removed', count + ' cards removed from collection');
+}
+
+function bulkClear() {
+  bulkSelected.clear();
+  updateBulkCount();
+  applyFiltersAndRender();
+}
+
+/* ============================================================
+   SHARE COLLECTION
+   ============================================================ */
+function shareCollection() {
+  const total = ALL_CARDS.length;
+  const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection).length;
+  const pct = total ? Math.round((collected / total) * 100) : 0;
+  let val = 0;
+  ALL_CARDS.forEach(c => { const st = getCardState(c.id); if (st.purchasePrice) val += parseFloat(st.purchasePrice) || 0; });
+
+  const eraLines = ERA_ORDER.map(era => {
+    const eraTotal = ALL_CARDS.filter(c => c.era === era).length;
+    const eraCollected = ALL_CARDS.filter(c => c.era === era && getCardState(c.id).inCollection).length;
+    const labels = { 'Black & White':'B&W','XY':'XY','Sun & Moon':'S&M','Sword & Shield':'S&S','Scarlet & Violet':'S&V','Mega Evolution':'Mega' };
+    return `${labels[era]}: ${eraCollected}/${eraTotal}`;
+  }).join(' · ');
+
+  const text = `🎴 TRICARD SYNDICATE\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📊 ${collected}/${total} cards (${pct}%)\n` +
+    `💰 Value: $${val.toFixed(2)}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    eraLines + `\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `Pokémon Full Art Trainer Collection`;
+
+  if (navigator.share) {
+    navigator.share({ title: 'Tricard Syndicate', text }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 Copied!', 'Collection stats copied to clipboard');
+    }).catch(() => {});
+  }
+}
+
+/* ============================================================
+   SPARKLINE — Collection History Tracker
+   ============================================================ */
+function trackCollectionHistory() {
+  if (!ALL_CARDS.length) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection).length;
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('trainerVaultHistory') || '[]'); } catch(e) {}
+  if (history.length && history[history.length - 1].date === today) {
+    history[history.length - 1].count = collected;
+  } else {
+    history.push({ date: today, count: collected });
+  }
+  if (history.length > 30) history = history.slice(-30);
+  try { localStorage.setItem('trainerVaultHistory', JSON.stringify(history)); } catch(e) {}
+}
+
+function renderSparkline() {
+  const container = document.getElementById('sparklineWrap');
+  if (!container) return;
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('trainerVaultHistory') || '[]'); } catch(e) {}
+  if (history.length < 2) {
+    container.innerHTML = '<div style="font-size:0.6rem;color:var(--text-dim);font-family:\'DM Mono\',monospace;margin-top:4px;">Tracking started today</div>';
+    return;
+  }
+  const max = ALL_CARDS.length || 1;
+  const w = 140, h = 36;
+  const step = w / (history.length - 1);
+  const pts = history.map((e, i) => {
+    const x = i * step;
+    const y = h - (e.count / max) * (h - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const lastY = h - (history[history.length - 1].count / max) * (h - 4) - 2;
+  // Gradient fill
+  const fillPts = [`0,${h}`, ...pts, `${w},${h}`].join(' ');
+  container.innerHTML = `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow:visible;">
+      <defs><linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.3"/><stop offset="100%" stop-color="var(--gold)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="${fillPts}" fill="url(#sparkGrad)"/>
+      <polyline points="${pts.join(' ')}" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${w}" cy="${lastY.toFixed(1)}" r="2.5" fill="var(--gold)"/>
+    </svg>
+    <div style="font-size:0.55rem;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:2px;">${history.length}d trend</div>`;
 }
 
 /* ============================================================

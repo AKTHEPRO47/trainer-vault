@@ -820,3 +820,55 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   .cond-btn { padding: 10px 16px; min-height: 40px; }
   .toggle-btn { padding: 12px 22px; min-height: 44px; }
 }
+
+/* ============ TOAST NOTIFICATIONS ============ */
+.toast-container {
+  position: fixed; top: 20px; right: 20px; z-index: 500;
+  display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+}
+.toast {
+  padding: 16px 20px; border-radius: 14px; min-width: 260px; max-width: 340px;
+  transform: translateX(120%); transition: transform 0.4s var(--ease-silk);
+  pointer-events: auto; border-left: 3px solid var(--gold);
+}
+.toast.show { transform: translateX(0); }
+.toast-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; color: var(--gold);
+}
+.toast-desc {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;
+}
+
+/* ============ BULK SELECT MODE ============ */
+.bulk-bar {
+  position: fixed; bottom: -80px; left: 50%; transform: translateX(-50%);
+  z-index: 150; display: flex; align-items: center; gap: 12px;
+  padding: 14px 24px; transition: bottom 0.4s var(--ease-silk);
+  border: 1px solid rgba(0,255,255,0.2);
+}
+.bulk-bar.active { bottom: 20px; }
+.bulk-count {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; color: var(--cyan);
+}
+.card-tile.bulk-selected {
+  border-color: rgba(0,255,255,0.5) !important;
+  box-shadow: 0 0 20px rgba(0,255,255,0.15), inset 0 0 10px rgba(0,255,255,0.04) !important;
+  opacity: 1 !important;
+}
+.card-tile.bulk-selected .collected-check {
+  background: var(--cyan); border-color: var(--cyan); color: #111;
+}
+.card-tile.bulk-selected .collected-check::after { content: '✓'; }
+
+/* ============ SPARKLINE ============ */
+#sparklineWrap { margin-top: 8px; text-align: center; }
+#sparklineWrap svg { display: inline-block; }
+
+@media (max-width: 768px) {
+  .toast-container { top: 10px; right: 10px; }
+  .toast { min-width: 220px; max-width: 280px; padding: 12px 14px; }
+  .toast-title { font-size: 0.95rem; }
+  .toast-desc { font-size: 0.65rem; }
+  .bulk-bar { padding: 10px 16px; gap: 8px; flex-wrap: wrap; justify-content: center; width: 90%; }
+  .bulk-bar .action-btn { padding: 6px 12px; font-size: 0.68rem; }
+}

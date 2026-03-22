@@ -8,6 +8,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Cinzel+Decorative:wght@400;700;900&family=DM+Mono:wght@400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#C45E2C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="logo.jpg">
 </head>
 <body>
 <!-- ============ CANVAS BACKGROUND ============ -->
@@ -61,6 +66,10 @@
         <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/></svg>
         <span class="nav-btn-tooltip">Theme</span>
       </button>
+      <button class="nav-btn" onclick="shareCollection()" title="Share Collection">
+        <svg viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+        <span class="nav-btn-tooltip">Share</span>
+      </button>
       <!-- Admin button hidden — backend code remains intact -->
     </div>
   </header>
@@ -83,6 +92,7 @@
         </svg>
         <div class="ring-text" id="progressText">0%</div>
       </div>
+      <div id="sparklineWrap"></div>
     </div>
     <div class="stat-card glass">
       <h3>By Era</h3>
@@ -129,6 +139,7 @@
         <option value="condition">Sort: Condition</option>
         <option value="price">Sort: Price</option>
         <option value="id">Sort: ID</option>
+        <option value="recent">Sort: Recent</option>
       </select>
       <span class="results-count" id="resultsCount">—</span>
     </div>
@@ -193,6 +204,7 @@
       <button class="action-btn gold" onclick="document.getElementById('importFile').click()">Import JSON</button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
       <button class="action-btn gold" onclick="exportCSV()">Export CSV</button>
+      <button class="action-btn gold" onclick="toggleBulkMode()">Bulk Select</button>
       <button class="action-btn gold" onclick="resetCollection()">Reset All</button>
     </div>
   </div>
@@ -373,6 +385,18 @@
       <button class="action-btn gold" onclick="adminAddCard()" style="width:100%; padding:12px; font-size:0.9rem;">Add Card</button>
     </div>
   </div>
+</div>
+
+<!-- TOAST NOTIFICATIONS -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- BULK ACTION BAR -->
+<div class="bulk-bar glass" id="bulkBar">
+  <span class="bulk-count" id="bulkCount">0 selected</span>
+  <button class="action-btn gold" onclick="bulkMarkCollected()">Mark Collected</button>
+  <button class="action-btn gold" onclick="bulkMarkWant()">Want List</button>
+  <button class="action-btn gold" onclick="bulkRemove()">Uncollect</button>
+  <button class="action-btn" onclick="bulkClear()">Clear</button>
 </div>
 
 <script src="app.js"></script>

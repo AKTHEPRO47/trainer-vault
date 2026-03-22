@@ -1,0 +1,14 @@
+{
+  "name": "Tricard Syndicate",
+  "short_name": "Tricard",
+  "description": "Pokémon Full Art Trainer Collection Tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050810",
+  "theme_color": "#C45E2C",
+  "orientation": "any",
+  "icons": [
+    { "src": "logo.jpg", "sizes": "192x192", "type": "image/jpeg" },
+    { "src": "logo.jpg", "sizes": "512x512", "type": "image/jpeg" }
+  ]
+}
