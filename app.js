@@ -17,27 +17,6 @@ const CONDITIONS = ['Mint','NM','LP','MP','HP','HP+'];
 const ERA_ORDER = ['Black & White','XY','Sun & Moon','Sword & Shield','Scarlet & Violet','Mega Evolution'];
 const ERA_KEYS = { 'Black & White':'bw','XY':'xy','Sun & Moon':'sm','Sword & Shield':'ss','Scarlet & Violet':'sv','Mega Evolution':'mega' };
 
-// Approximate market price estimates (NM raw) by variant + era
-const PRICE_ESTIMATES = {
-  'Full Art': { 'Black & White': 28, 'XY': 18, 'Sun & Moon': 14, 'Sword & Shield': 8, 'Scarlet & Violet': 6, 'Mega Evolution': 22 },
-  'Illustration Rare': { 'Black & White': 35, 'XY': 25, 'Sun & Moon': 20, 'Sword & Shield': 12, 'Scarlet & Violet': 10, 'Mega Evolution': 30 },
-  'Special Illustration Rare': { 'Black & White': 60, 'XY': 50, 'Sun & Moon': 45, 'Sword & Shield': 30, 'Scarlet & Violet': 25, 'Mega Evolution': 55 },
-  'Rainbow': { 'Black & White': 20, 'XY': 18, 'Sun & Moon': 15, 'Sword & Shield': 10, 'Scarlet & Violet': 8, 'Mega Evolution': 20 },
-  'Secret': { 'Black & White': 40, 'XY': 30, 'Sun & Moon': 25, 'Sword & Shield': 18, 'Scarlet & Violet': 14, 'Mega Evolution': 35 },
-};
-
-function getEstimatedPrice(card) {
-  const variantPrices = PRICE_ESTIMATES[card.variant];
-  if (!variantPrices) return null;
-  return variantPrices[card.era] || null;
-}
-
-function formatEstPrice(card) {
-  const p = getEstimatedPrice(card);
-  if (!p) return '';
-  return '~$' + p;
-}
-
 /* ============================================================
    INIT
    ============================================================ */
@@ -297,9 +276,6 @@ function renderGrid() {
     const condBadge = st.condition ? `<span class="badge badge-condition ${condClass}">${st.condition}</span>` : '';
     const wantBadge = st.wantList ? '<span class="badge badge-want">WANT</span>' : '';
 
-    const estPrice = formatEstPrice(card);
-    const priceBadge = estPrice ? `<span class="badge badge-price">${estPrice}</span>` : '';
-
     tile.innerHTML = `
       <div class="collected-check">${st.inCollection ? '✓' : ''}</div>
       <div>
@@ -310,7 +286,7 @@ function renderGrid() {
       <div class="card-badges">
         <span class="badge badge-era era-${eraKey}">${escapeHtml(card.era)}</span>
         <span class="badge badge-variant">${escapeHtml(card.variant)}</span>
-        ${priceBadge}${condBadge}${wantBadge}
+        ${condBadge}${wantBadge}
       </div>
     `;
 
@@ -449,8 +425,6 @@ function renderWantList() {
     const tile = document.createElement('div');
     tile.className = 'card-tile glass ' + (st.inCollection ? 'collected' : 'uncollected');
     tile.style.opacity = '1';
-    const estPrice = formatEstPrice(card);
-    const priceBadge = estPrice ? `<span class="badge badge-price">${estPrice}</span>` : '';
     tile.innerHTML = `
       <div>
         <div class="card-name" style="color:var(--crimson);">${escapeHtml(card.name)}</div>
@@ -460,7 +434,6 @@ function renderWantList() {
       <div class="card-badges">
         <span class="badge badge-era era-${eraKey}">${escapeHtml(card.era)}</span>
         <span class="badge badge-variant">${escapeHtml(card.variant)}</span>
-        ${priceBadge}
         ${st.inCollection ? '<span class="badge" style="background:rgba(255,215,0,0.2);color:var(--gold);">OWNED</span>' : '<span class="badge badge-want">NEEDED</span>'}
       </div>
     `;
@@ -535,9 +508,7 @@ function openModal(cardId) {
   const st = getCardState(card.id);
 
   document.getElementById('modalName').textContent = card.name;
-  const estP = getEstimatedPrice(card);
-  const estLabel = estP ? ` · Est. ~$${estP}` : '';
-  document.getElementById('modalSub').textContent = `${card.cardNumber} · ${card.set} · ${card.era} · ${card.variant}${estLabel}`;
+  document.getElementById('modalSub').textContent = `${card.cardNumber} · ${card.set} · ${card.era} · ${card.variant}`;
 
   // Load card image
   loadCardImage(card);
@@ -610,27 +581,56 @@ function loadCardImage(card) {
   // Show loading state
   showImagePlaceholder('Loading card image...');
 
-  // Build query: search by card number and set name
-  const num = card.cardNumber.split('/')[0].trim();
-  const setName = card.set;
-  const query = encodeURIComponent(`number:"${num}" set.name:"${setName}"`);
-
-  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=id,name,number,images`)
+  // Primary: search by name + set name to get the correct card art
+  const nameQuery = encodeURIComponent(`name:"${card.name}" set.name:"${card.set}"`);
+  fetch(`https://api.pokemontcg.io/v2/cards?q=${nameQuery}&pageSize=10&select=id,name,number,set,images,supertype,subtypes`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        // Try to find exact match by name
-        let match = data.data.find(c => c.name.toLowerCase() === card.name.toLowerCase());
+        // Try to find exact match by card number
+        const num = card.cardNumber.split('/')[0].trim();
+        let match = data.data.find(c => c.number === num);
+        // Then try matching trainer supertype (Full Art trainers)
+        if (!match) match = data.data.find(c => c.supertype === 'Trainer');
         if (!match) match = data.data[0];
         const imgUrl = match.images.large || match.images.small;
         imageCache[card.id] = imgUrl;
-        // Only update if this card is still the one displayed
         if (currentModalCard && currentModalCard.id === card.id) {
           showCardImage(imgUrl);
         }
       } else {
         // Fallback: search by name only
         fetchImageByName(card);
+      }
+    })
+    .catch(() => {
+      // On error, try name-only fallback
+      fetchImageByName(card);
+    });
+}
+
+function fetchImageByName(card) {
+  const query = encodeURIComponent(`name:"${card.name}" supertype:Trainer`);
+  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=20&select=id,name,number,set,images`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.data && data.data.length > 0) {
+        // Try matching set name first
+        let match = data.data.find(c => c.set && c.set.name === card.set);
+        // Then try matching card number
+        if (!match) {
+          const num = card.cardNumber.split('/')[0].trim();
+          match = data.data.find(c => c.number === num);
+        }
+        if (!match) match = data.data[0];
+        const imgUrl = match.images.large || match.images.small;
+        imageCache[card.id] = imgUrl;
+        if (currentModalCard && currentModalCard.id === card.id) {
+          showCardImage(imgUrl);
+        }
+      } else {
+        // Last resort: search by name without supertype filter
+        fetchImageByNameOnly(card);
       }
     })
     .catch(() => {
@@ -641,13 +641,12 @@ function loadCardImage(card) {
     });
 }
 
-function fetchImageByName(card) {
+function fetchImageByNameOnly(card) {
   const query = encodeURIComponent(`name:"${card.name}"`);
   fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=15&select=id,name,number,set,images`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        // Try matching set name
         let match = data.data.find(c => c.set && c.set.name === card.set);
         if (!match) match = data.data[0];
         const imgUrl = match.images.large || match.images.small;

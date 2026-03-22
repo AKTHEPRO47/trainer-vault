@@ -285,7 +285,6 @@ body {
 .badge-era { color: #fff; }
 .badge-variant { background: rgba(255,255,255,0.08); color: var(--text-dim); }
 .badge-condition { font-family: 'DM Mono', monospace; }
-.badge-price { background: rgba(0,255,136,0.12); color: var(--mint); font-family: 'DM Mono', monospace; }
 .badge-want { background: rgba(255,34,85,0.2); color: var(--crimson); }
 
 /* Condition colors */
