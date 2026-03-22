@@ -17,6 +17,27 @@ const CONDITIONS = ['Mint','NM','LP','MP','HP','HP+'];
 const ERA_ORDER = ['Black & White','XY','Sun & Moon','Sword & Shield','Scarlet & Violet','Mega Evolution'];
 const ERA_KEYS = { 'Black & White':'bw','XY':'xy','Sun & Moon':'sm','Sword & Shield':'ss','Scarlet & Violet':'sv','Mega Evolution':'mega' };
 
+// Approximate market price estimates (NM raw) by variant + era
+const PRICE_ESTIMATES = {
+  'Full Art': { 'Black & White': 28, 'XY': 18, 'Sun & Moon': 14, 'Sword & Shield': 8, 'Scarlet & Violet': 6, 'Mega Evolution': 22 },
+  'Illustration Rare': { 'Black & White': 35, 'XY': 25, 'Sun & Moon': 20, 'Sword & Shield': 12, 'Scarlet & Violet': 10, 'Mega Evolution': 30 },
+  'Special Illustration Rare': { 'Black & White': 60, 'XY': 50, 'Sun & Moon': 45, 'Sword & Shield': 30, 'Scarlet & Violet': 25, 'Mega Evolution': 55 },
+  'Rainbow': { 'Black & White': 20, 'XY': 18, 'Sun & Moon': 15, 'Sword & Shield': 10, 'Scarlet & Violet': 8, 'Mega Evolution': 20 },
+  'Secret': { 'Black & White': 40, 'XY': 30, 'Sun & Moon': 25, 'Sword & Shield': 18, 'Scarlet & Violet': 14, 'Mega Evolution': 35 },
+};
+
+function getEstimatedPrice(card) {
+  const variantPrices = PRICE_ESTIMATES[card.variant];
+  if (!variantPrices) return null;
+  return variantPrices[card.era] || null;
+}
+
+function formatEstPrice(card) {
+  const p = getEstimatedPrice(card);
+  if (!p) return '';
+  return '~$' + p;
+}
+
 /* ============================================================
    INIT
    ============================================================ */
@@ -276,6 +297,9 @@ function renderGrid() {
     const condBadge = st.condition ? `<span class="badge badge-condition ${condClass}">${st.condition}</span>` : '';
     const wantBadge = st.wantList ? '<span class="badge badge-want">WANT</span>' : '';
 
+    const estPrice = formatEstPrice(card);
+    const priceBadge = estPrice ? `<span class="badge badge-price">${estPrice}</span>` : '';
+
     tile.innerHTML = `
       <div class="collected-check">${st.inCollection ? '✓' : ''}</div>
       <div>
@@ -286,7 +310,7 @@ function renderGrid() {
       <div class="card-badges">
         <span class="badge badge-era era-${eraKey}">${escapeHtml(card.era)}</span>
         <span class="badge badge-variant">${escapeHtml(card.variant)}</span>
-        ${condBadge}${wantBadge}
+        ${priceBadge}${condBadge}${wantBadge}
       </div>
     `;
 
@@ -425,6 +449,8 @@ function renderWantList() {
     const tile = document.createElement('div');
     tile.className = 'card-tile glass ' + (st.inCollection ? 'collected' : 'uncollected');
     tile.style.opacity = '1';
+    const estPrice = formatEstPrice(card);
+    const priceBadge = estPrice ? `<span class="badge badge-price">${estPrice}</span>` : '';
     tile.innerHTML = `
       <div>
         <div class="card-name" style="color:var(--crimson);">${escapeHtml(card.name)}</div>
@@ -434,6 +460,7 @@ function renderWantList() {
       <div class="card-badges">
         <span class="badge badge-era era-${eraKey}">${escapeHtml(card.era)}</span>
         <span class="badge badge-variant">${escapeHtml(card.variant)}</span>
+        ${priceBadge}
         ${st.inCollection ? '<span class="badge" style="background:rgba(255,215,0,0.2);color:var(--gold);">OWNED</span>' : '<span class="badge badge-want">NEEDED</span>'}
       </div>
     `;
@@ -480,13 +507,15 @@ function updateStats() {
 
   // Value
   let totalVal = 0;
+  let estTotalVal = 0;
   ALL_CARDS.forEach(c => {
     const st = getCardState(c.id);
     if (st.purchasePrice) totalVal += parseFloat(st.purchasePrice) || 0;
+    if (st.inCollection) estTotalVal += getEstimatedPrice(c) || 0;
   });
   document.getElementById('totalValue').textContent = '$' + totalVal.toFixed(2);
   document.getElementById('statValueVal').textContent = '$' + (totalVal >= 1000 ? (totalVal/1000).toFixed(1)+'k' : totalVal.toFixed(0));
-  document.getElementById('valueSub').textContent = collected + ' cards priced';
+  document.getElementById('valueSub').textContent = collected + ' cards \u00b7 Est. ~$' + estTotalVal;
 
   // Update recently added
   renderRecentlyAdded();
@@ -506,7 +535,9 @@ function openModal(cardId) {
   const st = getCardState(card.id);
 
   document.getElementById('modalName').textContent = card.name;
-  document.getElementById('modalSub').textContent = `${card.cardNumber} · ${card.set} · ${card.era} · ${card.variant}`;
+  const estP = getEstimatedPrice(card);
+  const estLabel = estP ? ` · Est. ~$${estP}` : '';
+  document.getElementById('modalSub').textContent = `${card.cardNumber} · ${card.set} · ${card.era} · ${card.variant}${estLabel}`;
 
   // Load card image
   loadCardImage(card);
