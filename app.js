@@ -631,8 +631,25 @@ function loadCardImage(card) {
   // Show loading state
   showImagePlaceholder('Loading card image...');
 
-  const setId = SET_IDS[card.set];
-  const num = card.cardNumber.split('/')[0].trim();
+  let setId = SET_IDS[card.set];
+  let num = card.cardNumber.split('/')[0].trim();
+
+  // Handle sub-set prefixes (TG, GG, SV in Hidden Fates)
+  if (setId) {
+    const tgMatch = num.match(/^TG\d/);
+    const ggMatch = num.match(/^GG\d/);
+    if (tgMatch) {
+      setId += 'tg';
+    } else if (ggMatch) {
+      setId += 'gg';
+    } else if (card.set === 'Hidden Fates' && num.match(/^SV\d/)) {
+      setId = 'sma';
+    } else if (card.set === 'SV Promos' && num.match(/^SV\d/)) {
+      num = num.replace(/^SV/, '');
+    } else if (card.set === 'XY Promos') {
+      num = num.replace(/[a-z]+$/, '');
+    }
+  }
 
   if (setId) {
     // Build direct image URL — no API call needed
@@ -864,36 +881,94 @@ async function sendChat() {
 
   chatHistory.push({ role: 'user', content: msg });
   appendChatMsg('user', msg);
-  appendChatMsg('assistant loading', '');
 
-  try {
-    const resp = await fetch('/api/price-chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: chatHistory })
-    });
-    const data = await resp.json();
-    removeChatLoading();
-    chatHistory.push({ role: 'assistant', content: data.reply });
-    appendChatMsg('assistant', data.reply);
-  } catch(e) {
-    removeChatLoading();
-    appendChatMsg('system', 'Error connecting to Price Oracle. Is the server running?');
-  }
+  // Client-side Price Oracle — no API key needed
+  const reply = generatePriceReply(msg);
+  chatHistory.push({ role: 'assistant', content: reply.text });
+  appendChatMsg('assistant', reply.text, reply.links);
 }
 
-function appendChatMsg(cls, text) {
+function generatePriceReply(msg) {
+  const lower = msg.toLowerCase();
+  // Try to extract card info from the message
+  let cardName = '', setName = '', cardNum = '';
+  // Check if asking about current modal card
+  if (currentModalCard) {
+    const cn = currentModalCard.name.toLowerCase();
+    const sn = currentModalCard.set.toLowerCase();
+    if (lower.includes(cn.split(' ')[0]) || lower.includes('price check') || lower.includes('this card') || lower.includes('current card')) {
+      cardName = currentModalCard.name;
+      setName = currentModalCard.set;
+      cardNum = currentModalCard.cardNumber;
+    }
+  }
+  // Try to match any known card from the message
+  if (!cardName) {
+    for (const c of ALL_CARDS) {
+      if (lower.includes(c.name.toLowerCase())) {
+        cardName = c.name;
+        setName = c.set;
+        cardNum = c.cardNumber;
+        break;
+      }
+    }
+  }
+  // Extract from "Price check: X (Y) from Z" pattern
+  if (!cardName) {
+    const m = msg.match(/Price check:\s*(.+?)\s*\(([^)]+)\)\s*from\s*(.+)/i);
+    if (m) { cardName = m[1].trim(); cardNum = m[2].trim(); setName = m[3].trim(); }
+  }
+
+  const tcgSearch = encodeURIComponent(`pokemon ${cardName} ${setName} ${cardNum}`.trim());
+  const ebaySearch = encodeURIComponent(`pokemon tcg ${cardName} ${setName} full art`.trim());
+
+  if (cardName) {
+    const links = [
+      { label: 'TCGPlayer', url: `https://www.tcgplayer.com/search/pokemon/product?q=${tcgSearch}` },
+      { label: 'eBay Sold', url: `https://www.ebay.com/sch/i.html?_nkw=${ebaySearch}&LH_Complete=1&LH_Sold=1&_sacat=183454` },
+      { label: 'PriceCharting', url: `https://www.pricecharting.com/search-products?q=${encodeURIComponent(cardName + ' ' + setName)}&type=prices` }
+    ];
+    return {
+      text: `${cardName} (${cardNum}) from ${setName}\n\nCheck live market prices on these sites for the most accurate data:`,
+      links
+    };
+  }
+
+  // General questions
+  if (lower.includes('investment') || lower.includes('invest')) {
+    return { text: 'Full Art Trainer cards — especially from older eras (XY, Sun & Moon) — tend to appreciate over time. Special Illustration Rares from Scarlet & Violet have strong collector demand. Check TCGPlayer sold data for trends.', links: [{ label: 'TCGPlayer Trainers', url: 'https://www.tcgplayer.com/search/pokemon/product?q=full+art+trainer&view=grid' }] };
+  }
+  if (lower.includes('grade') || lower.includes('grading') || lower.includes('psa')) {
+    return { text: 'PSA 10 grades typically command 2-5x raw NM prices for modern cards. Vintage Full Arts can see 10x+ premiums. BGS Black Labels are the most valuable. Cards in Mint condition (no whitening, centering, scratches) are worth grading.', links: [] };
+  }
+  if (lower.includes('condition') || lower.includes('mint') || lower.includes('played')) {
+    return { text: 'Condition guide:\n• Mint/NM: 100% value — no whitening, perfect centering\n• LP: ~70-80% — light edge wear\n• MP: ~40-60% — noticeable wear, small creases\n• HP/HP+: ~20-35% — heavy wear, creases, damage\n\nAlways check TCGPlayer for condition-specific pricing.', links: [] };
+  }
+
+  return { text: 'Ask me about a specific card\'s price, investment potential, grading, or condition value! Try clicking "Price Check" on any card, or type a card name.', links: [] };
+}
+
+function appendChatMsg(cls, text, links) {
   const container = document.getElementById('chatMessages');
   const div = document.createElement('div');
   div.className = 'chat-msg ' + cls;
   div.textContent = text;
+  if (links && links.length) {
+    const linkRow = document.createElement('div');
+    linkRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;';
+    links.forEach(l => {
+      const a = document.createElement('a');
+      a.href = l.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = l.label;
+      a.style.cssText = 'color:var(--gold);font-size:0.75rem;font-weight:600;text-decoration:underline;';
+      linkRow.appendChild(a);
+    });
+    div.appendChild(linkRow);
+  }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
-}
-
-function removeChatLoading() {
-  const loading = document.querySelector('.chat-msg.loading');
-  if (loading) loading.remove();
 }
 
 /* ============================================================
