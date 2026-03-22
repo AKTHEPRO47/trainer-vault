@@ -116,7 +116,13 @@
   </div>
 
   <!-- FILTERS -->
-  <div class="filters-bar glass">
+  <div class="filters-wrapper">
+    <label class="filters-toggle" id="filtersToggle">
+      <input type="checkbox" id="filtersCheckbox" checked>
+      <span class="filters-toggle-label">Filters</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </label>
+    <div class="filters-bar glass" id="filtersBar">
     <div class="filter-row">
       <input type="text" class="search-box" id="searchBox" placeholder="Search cards, sets, numbers...">
       <div class="filter-row-divider"></div>
@@ -174,6 +180,7 @@
         <span class="filter-pill" data-cond="HP+">HP+</span>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- VIEW TABS + ACTIONS -->

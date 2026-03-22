@@ -37,6 +37,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sr = document.getElementById('statsRow');
     if (sr) sr.classList.add('stats-collapsed');
   }
+
+  // Filters toggle (JS fallback for browsers without :has())
+  const cb = document.getElementById('filtersCheckbox');
+  const fb = document.getElementById('filtersBar');
+  if (cb && fb) {
+    cb.addEventListener('change', () => {
+      fb.style.display = cb.checked ? '' : 'none';
+    });
+    // Auto-collapse filters on mobile
+    if (window.innerWidth <= 768) { cb.checked = false; fb.style.display = 'none'; }
+  }
 });
 
 /* ============================================================

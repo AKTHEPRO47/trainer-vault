@@ -179,6 +179,9 @@ body {
 .era-bar-count { width: 40px; color: var(--text-dim); font-family: 'DM Mono', monospace; }
 
 /* ============ FILTERS ============ */
+/* Filters toggle (mobile only) */
+.filters-toggle { display: none; }
+
 .filters-bar {
   display: flex; flex-direction: column; gap: 12px;
   padding: 18px 22px; margin-bottom: 16px; position: sticky; top: 0; z-index: 50;
@@ -692,9 +695,24 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   .stat-card { padding: 14px 12px; }
   .stat-card h3 { font-size: 0.75rem; letter-spacing: 1px; }
   .stat-value { font-size: 2rem; }
-  .filters-bar { padding: 10px 12px; gap: 10px; }
-  .filter-row-label { min-width: 45px; font-size: 0.58rem; }
-  .filter-pill { padding: 4px 9px; font-size: 0.65rem; }
+  .filters-bar { padding: 8px 10px; gap: 6px; position: static; margin-bottom: 8px; }
+  .filter-row-label { min-width: 38px; font-size: 0.55rem; }
+  .filter-pill { padding: 3px 7px; font-size: 0.6rem; }
+  .filter-row-divider { height: 16px; }
+  .filter-group { gap: 3px; }
+
+  /* Filters toggle on mobile */
+  .filters-toggle {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 8px 16px; margin-bottom: 6px;
+    font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 600;
+    color: var(--text-dim); letter-spacing: 1.5px; text-transform: uppercase;
+    user-select: none;
+  }
+  .filters-toggle input { display: none; }
+  .filters-toggle svg { transition: transform 0.25s var(--ease-silk); }
+  .filters-toggle:has(input:not(:checked)) svg { transform: rotate(-90deg); }
+  .filters-toggle:has(input:not(:checked)) ~ .filters-bar { display: none; }
   .search-box { min-width: 140px; padding: 8px 12px; font-size: 0.82rem; }
   .sort-select { padding: 6px 10px; font-size: 0.72rem; }
   .view-tabs { gap: 4px; flex-wrap: wrap; }
