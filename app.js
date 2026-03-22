@@ -588,16 +588,17 @@ function loadCardImage(card) {
   const wrap = document.getElementById('modalImageWrap');
   const placeholder = document.getElementById('modalImagePlaceholder');
 
+  // Don't permanently cache failures — allow retry
+  if (imageCache[card.id] === 'failed') {
+    showImagePlaceholder('No image available (tap to retry)');
+    wrap.style.cursor = 'pointer';
+    wrap.onclick = () => { delete imageCache[card.id]; wrap.onclick = null; wrap.style.cursor = ''; loadCardImage(card); };
+    return;
+  }
+
   // If already cached, show immediately
   if (imageCache[card.id]) {
     showCardImage(imageCache[card.id]);
-    return;
-  }
-  // Don't permanently cache failures — allow retry
-  if (imageCache[card.id] === 'failed') {
-    showImagePlaceholder('No image available (click to retry)');
-    wrap.style.cursor = 'pointer';
-    wrap.onclick = () => { delete imageCache[card.id]; wrap.onclick = null; wrap.style.cursor = ''; loadCardImage(card); };
     return;
   }
 
@@ -657,7 +658,25 @@ function fetchImageByName(card, nameWords, num) {
 
 function showCardImage(url) {
   const wrap = document.getElementById('modalImageWrap');
-  wrap.innerHTML = `<img class="modal-card-image" src="${escapeHtml(url)}" alt="Card Image" onerror="this.outerHTML='<div class=\\'modal-card-image-placeholder\\'>Image failed to load</div>'">`;
+  const img = document.createElement('img');
+  img.className = 'modal-card-image';
+  img.alt = 'Card Image';
+  img.src = url;
+  img.onerror = () => {
+    if (currentModalCard) imageCache[currentModalCard.id] = 'failed';
+    wrap.innerHTML = `<div class="modal-card-image-placeholder">Image failed to load (tap to retry)</div>`;
+    wrap.style.cursor = 'pointer';
+    wrap.onclick = () => {
+      if (currentModalCard) {
+        delete imageCache[currentModalCard.id];
+        wrap.onclick = null;
+        wrap.style.cursor = '';
+        loadCardImage(currentModalCard);
+      }
+    };
+  };
+  wrap.innerHTML = '';
+  wrap.appendChild(img);
 }
 
 function showImagePlaceholder(text) {
