@@ -550,6 +550,12 @@ function updateStats() {
   // Sparkline
   trackCollectionHistory();
   renderSparkline();
+
+  // New charts
+  renderVariantDonut();
+  renderTopSets();
+  renderCondChart();
+  renderVariantRadar();
 }
 
 /* ============================================================
@@ -1584,6 +1590,208 @@ function shareCollection() {
       showToast('📋 Copied!', 'Collection stats copied to clipboard');
     }).catch(() => {});
   }
+}
+
+/* ============================================================
+   VARIANT DONUT CHART
+   ============================================================ */
+function renderVariantDonut() {
+  const el = document.getElementById('variantDonut');
+  const legend = document.getElementById('variantLegend');
+  if (!el || !ALL_CARDS.length) return;
+
+  const variants = {};
+  ALL_CARDS.forEach(c => {
+    if (getCardState(c.id).inCollection) {
+      variants[c.variant] = (variants[c.variant] || 0) + 1;
+    }
+  });
+
+  const colors = {
+    'Full Art': '#FFD700', 'Illustration Rare': '#D4956A', 'Special Illustration Rare': '#FF2255',
+    'Rainbow': '#00FFFF', 'Secret': '#5C8374'
+  };
+  const entries = Object.entries(variants).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, e) => s + e[1], 0);
+
+  if (!total) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:0.7rem;font-family:DM Mono,monospace;padding:20px;">Collect cards to see breakdown</div>';
+    legend.innerHTML = '';
+    return;
+  }
+
+  const size = 110, cx = size / 2, cy = size / 2, r = 40, inner = 26;
+  let svgPaths = '';
+  let angle = -Math.PI / 2;
+  entries.forEach(([name, count]) => {
+    const slice = (count / total) * Math.PI * 2;
+    const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+    const x2 = cx + r * Math.cos(angle + slice), y2 = cy + r * Math.sin(angle + slice);
+    const ix1 = cx + inner * Math.cos(angle + slice), iy1 = cy + inner * Math.sin(angle + slice);
+    const ix2 = cx + inner * Math.cos(angle), iy2 = cy + inner * Math.sin(angle);
+    const large = slice > Math.PI ? 1 : 0;
+    const color = colors[name] || '#888';
+    svgPaths += `<path d="M${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} L${ix1},${iy1} A${inner},${inner} 0 ${large} 0 ${ix2},${iy2}Z" fill="${color}" opacity="0.85"><title>${name}: ${count}</title></path>`;
+    angle += slice;
+  });
+  svgPaths += `<text x="${cx}" y="${cy + 1}" text-anchor="middle" dominant-baseline="middle" fill="var(--gold)" font-family="Bebas Neue,sans-serif" font-size="16">${total}</text>`;
+
+  el.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${svgPaths}</svg>`;
+  legend.innerHTML = entries.map(([name, count]) => {
+    const color = colors[name] || '#888';
+    return `<span class="donut-legend-item"><span class="donut-legend-dot" style="background:${color}"></span>${name.replace('Special Illustration Rare','SIR').replace('Illustration Rare','IR')} ${count}</span>`;
+  }).join('');
+}
+
+/* ============================================================
+   TOP SETS BAR CHART
+   ============================================================ */
+function renderTopSets() {
+  const el = document.getElementById('topSetsChart');
+  if (!el || !ALL_CARDS.length) return;
+
+  const sets = {};
+  ALL_CARDS.forEach(c => {
+    if (!sets[c.set]) sets[c.set] = { total: 0, collected: 0, era: c.era };
+    sets[c.set].total++;
+    if (getCardState(c.id).inCollection) sets[c.set].collected++;
+  });
+
+  const sorted = Object.entries(sets)
+    .filter(([_, d]) => d.collected > 0)
+    .sort((a, b) => b[1].collected - a[1].collected)
+    .slice(0, 7);
+
+  if (!sorted.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:0.7rem;font-family:DM Mono,monospace;padding:10px;">No sets collected yet</div>';
+    return;
+  }
+
+  const maxCount = sorted[0][1].total;
+  const eraColors = { 'Black & White':'var(--era-bw)','XY':'var(--era-xy)','Sun & Moon':'var(--era-sm)','Sword & Shield':'var(--era-ss)','Scarlet & Violet':'var(--era-sv)','Mega Evolution':'var(--era-mega)' };
+
+  el.innerHTML = sorted.map(([name, d]) => {
+    const pct = Math.round((d.collected / d.total) * 100);
+    const barW = Math.round((d.total / maxCount) * 100);
+    const fillW = Math.round((d.collected / d.total) * 100);
+    const color = eraColors[d.era] || 'var(--copper)';
+    const shortName = name.length > 14 ? name.slice(0, 13) + '…' : name;
+    return `<div class="top-set-row">
+      <span class="top-set-label" title="${name}">${shortName}</span>
+      <div class="top-set-track" style="max-width:${barW}%"><div class="top-set-fill" style="width:${fillW}%;background:${color}"></div></div>
+      <span class="top-set-count">${d.collected}/${d.total}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================
+   CONDITION SPREAD CHART
+   ============================================================ */
+function renderCondChart() {
+  const el = document.getElementById('condChart');
+  if (!el || !ALL_CARDS.length) return;
+
+  const condColors = { 'Mint':'var(--mint)', 'NM':'var(--cyan)', 'LP':'#FFD700', 'MP':'#FFA500', 'HP':'#FF4444', 'HP+':'var(--crimson)' };
+  const counts = {};
+  let graded = 0;
+  ALL_CARDS.forEach(c => {
+    const st = getCardState(c.id);
+    if (st.inCollection && st.condition) {
+      counts[st.condition] = (counts[st.condition] || 0) + 1;
+      graded++;
+    }
+  });
+
+  const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection).length;
+  const ungraded = collected - graded;
+
+  if (!graded && !ungraded) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:0.7rem;font-family:DM Mono,monospace;">Set conditions in card details</div>';
+    return;
+  }
+
+  const max = Math.max(...Object.values(counts), ungraded, 1);
+  let html = '';
+  CONDITIONS.forEach(cond => {
+    const n = counts[cond] || 0;
+    const pct = Math.round((n / max) * 100);
+    html += `<div class="cond-bar-row">
+      <span class="cond-bar-label" style="color:${condColors[cond]}">${cond}</span>
+      <div class="cond-bar-track"><div class="cond-bar-fill" style="width:${pct}%;background:${condColors[cond]}"></div></div>
+      <span class="cond-bar-val">${n}</span>
+    </div>`;
+  });
+  if (ungraded > 0) {
+    const pct = Math.round((ungraded / max) * 100);
+    html += `<div class="cond-bar-row">
+      <span class="cond-bar-label" style="color:var(--text-dim)">?</span>
+      <div class="cond-bar-track"><div class="cond-bar-fill" style="width:${pct}%;background:rgba(255,255,255,0.15)"></div></div>
+      <span class="cond-bar-val">${ungraded}</span>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+/* ============================================================
+   VARIANT RADAR / SPIDER CHART
+   ============================================================ */
+function renderVariantRadar() {
+  const el = document.getElementById('variantRadar');
+  if (!el || !ALL_CARDS.length) return;
+
+  const variantNames = ['Full Art', 'Illustration Rare', 'Special Illustration Rare', 'Rainbow', 'Secret'];
+  const shortNames = ['FA', 'IR', 'SIR', 'Rain', 'Sec'];
+  const data = variantNames.map(v => {
+    const total = ALL_CARDS.filter(c => c.variant === v).length;
+    const collected = ALL_CARDS.filter(c => c.variant === v && getCardState(c.id).inCollection).length;
+    return total > 0 ? collected / total : 0;
+  });
+
+  const size = 140, cx = size / 2, cy = size / 2;
+  const levels = 4, maxR = 52;
+  const n = data.length;
+  const step = (Math.PI * 2) / n;
+
+  // Grid rings
+  let gridSvg = '';
+  for (let l = 1; l <= levels; l++) {
+    const r = (l / levels) * maxR;
+    let pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + i * step;
+      pts.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
+    }
+    gridSvg += `<polygon points="${pts.join(' ')}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>`;
+  }
+
+  // Axis lines
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + i * step;
+    const x2 = cx + maxR * Math.cos(a), y2 = cy + maxR * Math.sin(a);
+    gridSvg += `<line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>`;
+  }
+
+  // Data polygon
+  const dataPts = data.map((v, i) => {
+    const a = -Math.PI / 2 + i * step;
+    const r = Math.max(v, 0.05) * maxR;
+    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+  });
+  gridSvg += `<polygon points="${dataPts.join(' ')}" fill="rgba(255,215,0,0.15)" stroke="var(--gold)" stroke-width="1.5" stroke-linejoin="round"/>`;
+
+  // Data dots + labels
+  data.forEach((v, i) => {
+    const a = -Math.PI / 2 + i * step;
+    const r = Math.max(v, 0.05) * maxR;
+    const dx = cx + r * Math.cos(a), dy = cy + r * Math.sin(a);
+    gridSvg += `<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="2.5" fill="var(--gold)"/>`;
+    // Label
+    const lx = cx + (maxR + 14) * Math.cos(a), ly = cy + (maxR + 14) * Math.sin(a);
+    const pct = Math.round(v * 100);
+    gridSvg += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="var(--text-dim)" font-family="DM Mono,monospace" font-size="7">${shortNames[i]} ${pct}%</text>`;
+  });
+
+  el.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${gridSvg}</svg>`;
 }
 
 /* ============================================================
