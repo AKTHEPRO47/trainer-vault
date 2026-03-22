@@ -184,13 +184,14 @@
   </div>
 
   <!-- VIEW TABS + ACTIONS -->
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+  <div class="tabs-actions-row">
     <div class="view-tabs">
       <span class="view-tab active" data-view="grid">Grid</span>
       <span class="view-tab" data-view="timeline">Timeline</span>
       <span class="view-tab" data-view="sets">By Set</span>
       <span class="view-tab" data-view="wantlist">Want List</span>
     </div>
+    <button class="actions-toggle-btn" onclick="this.parentElement.querySelector('.actions-bar').classList.toggle('actions-open')">&#x22EF;</button>
     <div class="actions-bar">
       <button class="action-btn gold" onclick="exportJSON()">Export JSON</button>
       <button class="action-btn gold" onclick="document.getElementById('importFile').click()">Import JSON</button>

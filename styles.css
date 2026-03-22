@@ -226,6 +226,11 @@ body {
 .results-count { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--text-dim); white-space: nowrap; }
 
 /* ============ VIEW TABS ============ */
+.tabs-actions-row {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 14px;
+}
+.actions-toggle-btn { display: none; }
 .view-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
 .view-tab {
   padding: 8px 18px; border-radius: 14px; border: 1px solid var(--glass-border);
@@ -715,10 +720,21 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   .filters-toggle:has(input:not(:checked)) ~ .filters-bar { display: none; }
   .search-box { min-width: 140px; padding: 8px 12px; font-size: 0.82rem; }
   .sort-select { padding: 6px 10px; font-size: 0.72rem; }
-  .view-tabs { gap: 4px; flex-wrap: wrap; }
-  .view-tab { padding: 6px 14px; font-size: 0.72rem; }
-  .actions-bar { gap: 6px; }
-  .action-btn { padding: 6px 12px; font-size: 0.7rem; }
+  .view-tabs { gap: 3px; flex-wrap: nowrap; overflow-x: auto; flex: 1; }
+  .view-tab { padding: 6px 12px; font-size: 0.7rem; white-space: nowrap; }
+  .actions-bar { gap: 6px; display: none; flex-wrap: wrap; width: 100%; padding-top: 8px; }
+  .actions-bar.actions-open { display: flex; }
+  .action-btn { padding: 6px 12px; font-size: 0.68rem; flex: 1; text-align: center; min-width: 0; }
+  .actions-toggle-btn {
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: 1px solid var(--glass-border); border-radius: 10px;
+    color: var(--text-dim); font-size: 1.2rem; width: 34px; height: 34px; cursor: pointer;
+    flex-shrink: 0; transition: all 0.2s;
+  }
+  .actions-toggle-btn:hover { color: var(--gold); border-color: var(--gold); }
+  .tabs-actions-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+  }
   .modal { padding: 20px 16px; width: 95%; max-width: 95vw; }
   .modal h2 { font-size: 1.6rem; }
   .modal-overlay { backdrop-filter: blur(4px); }
