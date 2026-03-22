@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupQuickScan();
   verifyAdminToken();
   loadAchievements();
+  applyTheme(localStorage.getItem('trainerVaultTheme') || 'dark');
   applyFiltersAndRender();
 
   // Register service worker for PWA / offline support
@@ -1072,10 +1073,20 @@ function downloadFile(filename, content, type) {
 }
 
 /* ============================================================
-   DIM MODE
+   THEME TOGGLE (dark → light → dim → dark)
    ============================================================ */
+const THEMES = ['dark', 'light', 'dim'];
 function toggleDimMode() {
-  document.body.classList.toggle('dim-mode');
+  const saved = localStorage.getItem('trainerVaultTheme') || 'dark';
+  const next = THEMES[(THEMES.indexOf(saved) + 1) % THEMES.length];
+  applyTheme(next);
+  localStorage.setItem('trainerVaultTheme', next);
+}
+
+function applyTheme(theme) {
+  document.body.classList.remove('dim-mode', 'light-mode');
+  if (theme === 'light') document.body.classList.add('light-mode');
+  else if (theme === 'dim') document.body.classList.add('dim-mode');
 }
 
 /* ============================================================
