@@ -984,7 +984,7 @@ function escapeHtml(str) {
 }
 
 /* ============================================================
-   3D VERTEX MESH CANVAS BACKGROUND
+   3D VERTEX MESH CANVAS BACKGROUND (Enhanced)
    ============================================================ */
 function initCanvas() {
   const canvas = document.getElementById('bgCanvas');
@@ -992,9 +992,15 @@ function initCanvas() {
   let W, H;
   let mouseX = 0, mouseY = 0;
   let vertices = [];
+  let shapes = [];
+  let shootingStars = [];
+  let nebulaClouds = [];
+  let globalTime = 0;
 
   const isMobile = window.innerWidth < 768;
-  const VERTEX_COUNT = isMobile ? 80 : 180;
+  const VERTEX_COUNT = isMobile ? 90 : 200;
+  const SHAPE_COUNT = isMobile ? 8 : 20;
+  const NEBULA_COUNT = isMobile ? 3 : 6;
   const MAX_EDGE_DIST = 140;
   const DEPTH_RANGE = 600;
   const FOCAL = 400;
@@ -1005,7 +1011,7 @@ function initCanvas() {
     [196, 94, 44],    // rust
     [212, 149, 106],  // copper
     [92, 131, 116],   // patina
-    [255, 34, 85],    // crimson (rare spark)
+    [255, 34, 85],    // crimson
   ];
 
   function resize() {
@@ -1015,6 +1021,11 @@ function initCanvas() {
   resize();
   window.addEventListener('resize', resize);
   document.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+  if ('ontouchstart' in window) {
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches[0]) { mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; }
+    }, { passive: true });
+  }
 
   // Init vertices
   for (let i = 0; i < VERTEX_COUNT; i++) {
@@ -1031,21 +1042,136 @@ function initCanvas() {
     });
   }
 
+  // Init floating geometric shapes (triangles, hexagons, diamonds, rings)
+  const shapeTypes = ['triangle', 'hexagon', 'diamond', 'ring', 'pokeball'];
+  for (let i = 0; i < SHAPE_COUNT; i++) {
+    const r = Math.random();
+    const colorPick = r < 0.1 ? 4 : r < 0.25 ? 3 : r < 0.50 ? 1 : r < 0.70 ? 2 : 0;
+    shapes.push({
+      x: (Math.random() - 0.5) * W * 1.4,
+      y: (Math.random() - 0.5) * H * 1.4,
+      z: Math.random() * DEPTH_RANGE,
+      vx: (Math.random() - 0.5) * DRIFT_SPEED * 0.4,
+      vy: (Math.random() - 0.5) * DRIFT_SPEED * 0.4,
+      vz: (Math.random() - 0.5) * DRIFT_SPEED * 0.3,
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.008,
+      size: 12 + Math.random() * 20,
+      type: shapeTypes[Math.floor(Math.random() * shapeTypes.length)],
+      color: colors[colorPick],
+      pulse: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // Init nebula clouds (soft glowing blobs)
+  for (let i = 0; i < NEBULA_COUNT; i++) {
+    const colorPick = Math.floor(Math.random() * colors.length);
+    nebulaClouds.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      radius: 100 + Math.random() * 200,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: (Math.random() - 0.5) * 0.15,
+      color: colors[colorPick],
+      alpha: 0.015 + Math.random() * 0.02,
+      pulse: Math.random() * Math.PI * 2,
+    });
+  }
+
   function project(v) {
     const scale = FOCAL / (v.z + FOCAL);
-    return {
-      sx: v.x * scale + W / 2,
-      sy: v.y * scale + H / 2,
-      scale: scale
-    };
+    return { sx: v.x * scale + W / 2, sy: v.y * scale + H / 2, scale };
+  }
+
+  // Draw a geometric shape outline
+  function drawShape(ctx, type, sx, sy, size, rotation, color, alpha) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(rotation);
+    ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha.toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const s = size;
+    switch (type) {
+      case 'triangle':
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.866, s * 0.5);
+        ctx.lineTo(-s * 0.866, s * 0.5);
+        ctx.closePath();
+        break;
+      case 'hexagon':
+        for (let i = 0; i < 6; i++) {
+          const a = (Math.PI / 3) * i - Math.PI / 6;
+          const px = Math.cos(a) * s, py = Math.sin(a) * s;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        break;
+      case 'diamond':
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.6, 0);
+        ctx.lineTo(0, s);
+        ctx.lineTo(-s * 0.6, 0);
+        ctx.closePath();
+        break;
+      case 'ring':
+        ctx.arc(0, 0, s, 0, Math.PI * 2);
+        break;
+      case 'pokeball':
+        ctx.arc(0, 0, s, 0, Math.PI * 2);
+        ctx.moveTo(-s, 0);
+        ctx.lineTo(s, 0);
+        break;
+    }
+    ctx.stroke();
+    // Inner glow fill
+    ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${(alpha * 0.08).toFixed(3)})`;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Spawn a shooting star occasionally
+  function maybeSpawnShootingStar() {
+    if (Math.random() < (isMobile ? 0.003 : 0.006)) {
+      const c = colors[Math.floor(Math.random() * colors.length)];
+      shootingStars.push({
+        x: Math.random() * W,
+        y: Math.random() * H * 0.4,
+        vx: 3 + Math.random() * 4,
+        vy: 1.5 + Math.random() * 2,
+        life: 1,
+        decay: 0.015 + Math.random() * 0.01,
+        color: c,
+        trail: [],
+      });
+    }
   }
 
   let lastTime = 0;
   function animate(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 16.67, 3);
     lastTime = timestamp;
+    globalTime += dt * 0.01;
 
     ctx.clearRect(0, 0, W, H);
+
+    // === Draw nebula clouds (behind everything) ===
+    for (let i = 0; i < nebulaClouds.length; i++) {
+      const n = nebulaClouds[i];
+      n.x += n.vx * dt;
+      n.y += n.vy * dt;
+      n.pulse += 0.003 * dt;
+      if (n.x > W + n.radius) n.x = -n.radius;
+      if (n.x < -n.radius) n.x = W + n.radius;
+      if (n.y > H + n.radius) n.y = -n.radius;
+      if (n.y < -n.radius) n.y = H + n.radius;
+      const pulseAlpha = n.alpha * (0.7 + 0.3 * Math.sin(n.pulse));
+      const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.radius);
+      grad.addColorStop(0, `rgba(${n.color[0]},${n.color[1]},${n.color[2]},${pulseAlpha.toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(n.x - n.radius, n.y - n.radius, n.radius * 2, n.radius * 2);
+    }
 
     // Mouse influence (yaw/pitch rotation)
     const mxNorm = (mouseX / W - 0.5) * MOUSE_INFLUENCE;
@@ -1053,7 +1179,7 @@ function initCanvas() {
     const cosY = Math.cos(mxNorm), sinY = Math.sin(mxNorm);
     const cosP = Math.cos(myNorm), sinP = Math.sin(myNorm);
 
-    // Update + project
+    // === Update + project vertices ===
     const projected = [];
     for (let i = 0; i < vertices.length; i++) {
       const v = vertices[i];
@@ -1061,7 +1187,6 @@ function initCanvas() {
       v.y += v.vy * dt;
       v.z += v.vz * dt;
 
-      // Wrap
       if (v.x > W) v.x = -W;
       if (v.x < -W) v.x = W;
       if (v.y > H) v.y = -H;
@@ -1069,7 +1194,6 @@ function initCanvas() {
       if (v.z > DEPTH_RANGE) v.z = 0;
       if (v.z < 0) v.z = DEPTH_RANGE;
 
-      // Apply mouse rotation
       const rx = v.x * cosY - v.z * sinY;
       const rz = v.x * sinY + v.z * cosY;
       const ry = v.y * cosP - rz * sinP;
@@ -1082,7 +1206,7 @@ function initCanvas() {
       projected.push(p);
     }
 
-    // Draw edges
+    // === Draw edges ===
     for (let i = 0; i < projected.length; i++) {
       for (let j = i + 1; j < projected.length; j++) {
         const dx = projected[i].sx - projected[j].sx;
@@ -1101,7 +1225,7 @@ function initCanvas() {
       }
     }
 
-    // Draw vertices
+    // === Draw vertices ===
     for (let i = 0; i < projected.length; i++) {
       const p = projected[i];
       const r = Math.max(1, p.scale * 3);
@@ -1118,6 +1242,72 @@ function initCanvas() {
       ctx.arc(p.sx, p.sy, r * 2.5, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${(alpha * 0.15).toFixed(3)})`;
       ctx.fill();
+    }
+
+    // === Update + draw floating geometric shapes ===
+    for (let i = 0; i < shapes.length; i++) {
+      const s = shapes[i];
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.z += s.vz * dt;
+      s.rotation += s.rotSpeed * dt;
+      s.pulse += 0.015 * dt;
+
+      if (s.x > W) s.x = -W;
+      if (s.x < -W) s.x = W;
+      if (s.y > H) s.y = -H;
+      if (s.y < -H) s.y = H;
+      if (s.z > DEPTH_RANGE) s.z = 0;
+      if (s.z < 0) s.z = DEPTH_RANGE;
+
+      const rx = s.x * cosY - s.z * sinY;
+      const rz = s.x * sinY + s.z * cosY;
+      const ry = s.y * cosP - rz * sinP;
+      const rz2 = s.y * sinP + rz * cosP;
+      const tempV = { x: rx, y: ry, z: Math.max(rz2, 1) };
+      const p = project(tempV);
+      const shapeAlpha = Math.min(0.35, p.scale * 0.5) * (0.6 + 0.4 * Math.sin(s.pulse));
+      drawShape(ctx, s.type, p.sx, p.sy, s.size * p.scale, s.rotation, s.color, shapeAlpha);
+    }
+
+    // === Shooting stars ===
+    maybeSpawnShootingStar();
+    for (let i = shootingStars.length - 1; i >= 0; i--) {
+      const ss = shootingStars[i];
+      ss.trail.push({ x: ss.x, y: ss.y, life: ss.life });
+      ss.x += ss.vx * dt;
+      ss.y += ss.vy * dt;
+      ss.life -= ss.decay * dt;
+
+      // Draw trail
+      for (let t = ss.trail.length - 1; t >= 0; t--) {
+        ss.trail[t].life -= ss.decay * dt * 0.8;
+        if (ss.trail[t].life <= 0) { ss.trail.splice(t, 1); continue; }
+        const ta = ss.trail[t].life * 0.5;
+        const tr = 1 + ss.trail[t].life * 1.5;
+        ctx.beginPath();
+        ctx.arc(ss.trail[t].x, ss.trail[t].y, tr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${ss.color[0]},${ss.color[1]},${ss.color[2]},${ta.toFixed(3)})`;
+        ctx.fill();
+      }
+
+      // Draw head
+      if (ss.life > 0) {
+        const headR = 2 + ss.life * 2;
+        ctx.beginPath();
+        ctx.arc(ss.x, ss.y, headR, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${ss.color[0]},${ss.color[1]},${ss.color[2]},${ss.life.toFixed(3)})`;
+        ctx.fill();
+        // Head glow
+        ctx.beginPath();
+        ctx.arc(ss.x, ss.y, headR * 3, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${ss.color[0]},${ss.color[1]},${ss.color[2]},${(ss.life * 0.2).toFixed(3)})`;
+        ctx.fill();
+      }
+
+      if (ss.life <= 0 && ss.trail.length === 0) {
+        shootingStars.splice(i, 1);
+      }
     }
 
     requestAnimationFrame(animate);
