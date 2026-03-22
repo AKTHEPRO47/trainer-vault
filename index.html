@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TRAINER VAULT — Full Art Trainer Collection</title>
+<title>POKETRAINER VAULT — Full Art Trainer Collection</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Cinzel+Decorative:wght@400;700;900&family=DM+Mono:wght@400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
@@ -100,6 +100,12 @@ body {
   font-size: 0.6rem; color: var(--text-dim); letter-spacing: 2px;
   text-transform: uppercase; font-weight: 500;
 }
+.nav-brand .brand-credit {
+  font-size: 0.55rem; color: var(--copper); letter-spacing: 0.5px;
+  font-weight: 500; text-decoration: none; font-family: 'DM Mono', monospace;
+  transition: color 0.2s var(--ease-silk); margin-top: 1px;
+}
+.nav-brand .brand-credit:hover { color: var(--gold); }
 .nav-stats {
   display: flex; gap: 2px; padding: 0 12px; flex: 1; justify-content: center; flex-wrap: wrap;
 }
@@ -175,8 +181,19 @@ body {
 
 /* ============ FILTERS ============ */
 .filters-bar {
-  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-  padding: 14px 20px; margin-bottom: 16px; position: sticky; top: 0; z-index: 50;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 22px; margin-bottom: 16px; position: sticky; top: 0; z-index: 50;
+}
+.filters-bar .filter-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.filters-bar .filter-row-label {
+  font-family: 'Montserrat', sans-serif; font-size: 0.62rem; font-weight: 700;
+  color: var(--rust-light); text-transform: uppercase; letter-spacing: 1.5px;
+  min-width: 62px; flex-shrink: 0;
+}
+.filters-bar .filter-row-divider {
+  width: 1px; height: 22px; background: var(--glass-border); flex-shrink: 0;
 }
 .search-box {
   flex: 1; min-width: 200px; padding: 10px 16px; border-radius: 14px;
@@ -189,13 +206,13 @@ body {
 
 .filter-group { display: flex; gap: 4px; flex-wrap: wrap; }
 .filter-pill {
-  padding: 6px 14px; border-radius: 20px; border: 1px solid var(--glass-border);
-  background: rgba(255,255,255,0.04); color: var(--text-dim); cursor: pointer;
-  font-family: 'Montserrat', sans-serif; font-size: 0.72rem; font-weight: 600;
+  padding: 5px 12px; border-radius: 20px; border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.03); color: var(--text-dim); cursor: pointer;
+  font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 600;
   transition: all 0.25s var(--ease-silk); white-space: nowrap;
 }
-.filter-pill:hover { background: rgba(196,94,44,0.12); color: var(--copper); }
-.filter-pill.active { background: rgba(255,215,0,0.2); border-color: var(--gold); color: var(--gold); }
+.filter-pill:hover { background: rgba(196,94,44,0.12); color: var(--copper); border-color: rgba(196,94,44,0.25); }
+.filter-pill.active { background: rgba(255,215,0,0.15); border-color: var(--gold); color: var(--gold); }
 
 .sort-select {
   padding: 8px 12px; border-radius: 12px; border: 1px solid var(--glass-border);
@@ -614,10 +631,11 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   <!-- HEADER / NAVBAR -->
   <header class="header glass">
     <div class="nav-brand">
-      <div class="logo-hex">TV</div>
+      <div class="logo-hex">PV</div>
       <div class="brand-text">
-        <div class="brand-title">TRAINER VAULT</div>
+        <div class="brand-title">POKETRAINER VAULT</div>
         <div class="brand-sub">Full Art English Collection</div>
+        <a href="https://neilaryankota.com" target="_blank" rel="noopener noreferrer" class="brand-credit">by Neil Aryan Kota</a>
       </div>
     </div>
     <div class="nav-stats">
@@ -701,54 +719,63 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
 
   <!-- FILTERS -->
   <div class="filters-bar glass">
-    <input type="text" class="search-box" id="searchBox" placeholder="Search cards, sets, numbers...">
-    
-    <div class="filter-group" id="eraFilters">
-      <span class="filter-pill active" data-era="All">All</span>
-      <span class="filter-pill" data-era="Black & White">B&W</span>
-      <span class="filter-pill" data-era="XY">XY</span>
-      <span class="filter-pill" data-era="Sun & Moon">S&M</span>
-      <span class="filter-pill" data-era="Sword & Shield">S&S</span>
-      <span class="filter-pill" data-era="Scarlet & Violet">S&V</span>
-      <span class="filter-pill" data-era="Mega Evolution">Mega</span>
+    <div class="filter-row">
+      <input type="text" class="search-box" id="searchBox" placeholder="Search cards, sets, numbers...">
+      <div class="filter-row-divider"></div>
+      <select class="sort-select" id="sortSelect">
+        <option value="name">Sort: Name</option>
+        <option value="set">Sort: Set</option>
+        <option value="era">Sort: Era</option>
+        <option value="condition">Sort: Condition</option>
+        <option value="price">Sort: Price</option>
+        <option value="id">Sort: ID</option>
+      </select>
+      <span class="results-count" id="resultsCount">—</span>
     </div>
 
-    <div class="filter-group" id="variantFilters">
-      <span class="filter-pill active" data-variant="All">All</span>
-      <span class="filter-pill" data-variant="Full Art">Full Art</span>
-      <span class="filter-pill" data-variant="Illustration Rare">IR</span>
-      <span class="filter-pill" data-variant="Special Illustration Rare">SIR</span>
-      <span class="filter-pill" data-variant="Rainbow">Rainbow</span>
-      <span class="filter-pill" data-variant="Secret">Secret</span>
+    <div class="filter-row">
+      <span class="filter-row-label">Era</span>
+      <div class="filter-group" id="eraFilters">
+        <span class="filter-pill active" data-era="All">All</span>
+        <span class="filter-pill" data-era="Black & White">B&W</span>
+        <span class="filter-pill" data-era="XY">XY</span>
+        <span class="filter-pill" data-era="Sun & Moon">S&M</span>
+        <span class="filter-pill" data-era="Sword & Shield">S&S</span>
+        <span class="filter-pill" data-era="Scarlet & Violet">S&V</span>
+        <span class="filter-pill" data-era="Mega Evolution">Mega</span>
+      </div>
+      <div class="filter-row-divider"></div>
+      <span class="filter-row-label">Type</span>
+      <div class="filter-group" id="variantFilters">
+        <span class="filter-pill active" data-variant="All">All</span>
+        <span class="filter-pill" data-variant="Full Art">Full Art</span>
+        <span class="filter-pill" data-variant="Illustration Rare">IR</span>
+        <span class="filter-pill" data-variant="Special Illustration Rare">SIR</span>
+        <span class="filter-pill" data-variant="Rainbow">Rainbow</span>
+        <span class="filter-pill" data-variant="Secret">Secret</span>
+      </div>
     </div>
 
-    <div class="filter-group" id="collectionFilters">
-      <span class="filter-pill active" data-coll="All">All</span>
-      <span class="filter-pill" data-coll="Collected">✓</span>
-      <span class="filter-pill" data-coll="Not Collected">✗</span>
-      <span class="filter-pill" data-coll="Want List">Want</span>
+    <div class="filter-row">
+      <span class="filter-row-label">Status</span>
+      <div class="filter-group" id="collectionFilters">
+        <span class="filter-pill active" data-coll="All">All</span>
+        <span class="filter-pill" data-coll="Collected">Collected</span>
+        <span class="filter-pill" data-coll="Not Collected">Missing</span>
+        <span class="filter-pill" data-coll="Want List">Want List</span>
+      </div>
+      <div class="filter-row-divider"></div>
+      <span class="filter-row-label">Grade</span>
+      <div class="filter-group" id="conditionFilters">
+        <span class="filter-pill active" data-cond="All">All</span>
+        <span class="filter-pill" data-cond="Mint">Mint</span>
+        <span class="filter-pill" data-cond="NM">NM</span>
+        <span class="filter-pill" data-cond="LP">LP</span>
+        <span class="filter-pill" data-cond="MP">MP</span>
+        <span class="filter-pill" data-cond="HP">HP</span>
+        <span class="filter-pill" data-cond="HP+">HP+</span>
+      </div>
     </div>
-
-    <div class="filter-group" id="conditionFilters">
-      <span class="filter-pill active" data-cond="All">All</span>
-      <span class="filter-pill" data-cond="Mint">Mint</span>
-      <span class="filter-pill" data-cond="NM">NM</span>
-      <span class="filter-pill" data-cond="LP">LP</span>
-      <span class="filter-pill" data-cond="MP">MP</span>
-      <span class="filter-pill" data-cond="HP">HP</span>
-      <span class="filter-pill" data-cond="HP+">HP+</span>
-    </div>
-
-    <select class="sort-select" id="sortSelect">
-      <option value="name">Sort: Name</option>
-      <option value="set">Sort: Set</option>
-      <option value="era">Sort: Era</option>
-      <option value="condition">Sort: Condition</option>
-      <option value="price">Sort: Price</option>
-      <option value="id">Sort: ID</option>
-    </select>
-
-    <span class="results-count" id="resultsCount">—</span>
   </div>
 
   <!-- VIEW TABS + ACTIONS -->
@@ -775,7 +802,7 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   <div class="want-list-view" id="wantListView"></div>
 
   <!-- FOOTER -->
-  <div class="footer">TRAINER VAULT · Pokemon Full Art Trainer Collection Tracker · All card names &copy; The Pokemon Company</div>
+  <div class="footer">POKETRAINER VAULT · Pokemon Full Art Trainer Collection Tracker · by <a href="https://neilaryankota.com" target="_blank" rel="noopener noreferrer" style="color:var(--copper);text-decoration:none;">Neil Aryan Kota</a> · All card names &copy; The Pokemon Company</div>
 </div>
 
 <!-- ============ CARD DETAIL MODAL ============ -->
