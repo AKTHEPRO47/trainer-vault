@@ -69,7 +69,13 @@
   </header>
 
   <!-- STATS DASHBOARD -->
-  <div class="stats-row">
+  <div class="stats-toggle-bar" id="statsToggleBar">
+    <button class="stats-toggle-btn" onclick="document.getElementById('statsRow').classList.toggle('stats-collapsed')">
+      <span>Stats</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+  </div>
+  <div class="stats-row" id="statsRow">
     <div class="stat-card glass">
       <h3>Collection Progress</h3>
       <div class="progress-ring">

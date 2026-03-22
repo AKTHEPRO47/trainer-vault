@@ -31,6 +31,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupQuickScan();
   verifyAdminToken();
   applyFiltersAndRender();
+
+  // Auto-collapse stats on mobile
+  if (window.innerWidth <= 768) {
+    const sr = document.getElementById('statsRow');
+    if (sr) sr.classList.add('stats-collapsed');
+  }
 });
 
 /* ============================================================
@@ -290,21 +296,24 @@ function renderGrid() {
       </div>
     `;
 
-    tile.addEventListener('click', (e) => {
-      if (e.detail === 1) {
-        // Single click: toggle collection
-        setTimeout(() => {
-          if (!tile._dblclick) {
-            toggleCollection(card.id);
-          }
-          tile._dblclick = false;
-        }, 250);
-      }
-    });
-    tile.addEventListener('dblclick', () => {
-      tile._dblclick = true;
-      openModal(card.id);
-    });
+    // Touch devices: single tap opens modal. Desktop: single click toggles, double-click opens modal
+    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (isTouch) {
+      tile.addEventListener('click', () => openModal(card.id));
+    } else {
+      tile.addEventListener('click', (e) => {
+        if (e.detail === 1) {
+          setTimeout(() => {
+            if (!tile._dblclick) toggleCollection(card.id);
+            tile._dblclick = false;
+          }, 250);
+        }
+      });
+      tile.addEventListener('dblclick', () => {
+        tile._dblclick = true;
+        openModal(card.id);
+      });
+    }
     tile.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       openModal(card.id);
