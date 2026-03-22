@@ -703,7 +703,8 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   .action-btn { padding: 6px 12px; font-size: 0.7rem; }
   .modal { padding: 20px 16px; width: 95%; max-width: 95vw; }
   .modal h2 { font-size: 1.6rem; }
-  .modal-card-image { max-width: 220px; min-height: 300px; }
+  .modal-overlay { backdrop-filter: blur(4px); }
+  .modal-card-image { max-width: 220px; min-height: 300px; transition: none; }
   .grade-grid { grid-template-columns: 1fr; }
   .toggle-row { flex-direction: column; gap: 8px; }
   .toggle-btn { width: 100%; text-align: center; }
@@ -713,6 +714,8 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   .recent-cards { gap: 6px; }
   .recent-card { min-width: 140px; padding: 8px 12px; }
   .footer { padding: 14px; font-size: 0.6rem; }
+  /* Reduce blur for performance on mobile */
+  .glass { backdrop-filter: blur(8px) saturate(140%); -webkit-backdrop-filter: blur(8px) saturate(140%); }
   .view-tabs { margin-bottom: 0; }
   .actions-bar { margin-bottom: 0; }
 }
