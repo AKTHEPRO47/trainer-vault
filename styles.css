@@ -74,11 +74,8 @@ body {
   border-right: 1px solid var(--glass-border);
   flex-shrink: 0;
 }
-.nav-brand .logo-hex {
-  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, var(--gold), var(--rust), var(--gold-dim));
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-  color: #050810; font-weight: 900; font-size: 0.85rem; font-family: 'Montserrat', sans-serif;
+.nav-brand .logo-img {
+  width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
 }
 .nav-brand .brand-text { display: flex; flex-direction: column; }
 .nav-brand .brand-title {
@@ -710,7 +707,7 @@ body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-bor
   .stats-row { grid-template-columns: 1fr; gap: 8px; }
   .nav-brand .brand-title { font-size: 0.9rem; }
   .nav-brand .brand-sub { font-size: 0.5rem; letter-spacing: 1.5px; }
-  .nav-brand .logo-hex { width: 28px; height: 28px; font-size: 0.75rem; }
+  .nav-brand .logo-img { width: 28px; height: 28px; }
   .nav-stat { padding: 4px 8px; }
   .nav-stat-value { font-size: 0.95rem; }
   .nav-stat-label { font-size: 0.5rem; }
