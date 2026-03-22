@@ -573,63 +573,65 @@ function loadCardImage(card) {
     showCardImage(imageCache[card.id]);
     return;
   }
-  if (imageCache[card.id] === null) {
-    showImagePlaceholder('No image available');
+  // Don't permanently cache failures — allow retry
+  if (imageCache[card.id] === 'failed') {
+    showImagePlaceholder('No image available (click to retry)');
+    wrap.style.cursor = 'pointer';
+    wrap.onclick = () => { delete imageCache[card.id]; wrap.onclick = null; wrap.style.cursor = ''; loadCardImage(card); };
     return;
   }
 
   // Show loading state
   showImagePlaceholder('Loading card image...');
 
-  // Fast query: number + name (both indexed fields)
+  // Clean name for API search: strip apostrophes and parenthetical content
+  const cleanName = card.name.replace(/'/g, '').replace(/\s*\(.*?\)/g, '').trim();
+  // Split into keywords for broader matching
+  const nameWords = cleanName.split(/\s+/).map(w => `name:${w}`).join(' ');
   const num = card.cardNumber.split('/')[0].trim();
-  const query = encodeURIComponent(`number:"${num}" name:"${card.name}"`);
+
+  // Primary: search by number + set name (fast indexed query), verify name
+  const query = encodeURIComponent(`number:${num} set.name:"${card.set}"`);
   fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=id,name,number,images`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        const match = data.data[0];
+        // Verify name matches
+        let match = data.data.find(c => c.name.replace(/'/g, '').toLowerCase().includes(cleanName.split(/\s+/)[0].toLowerCase()));
+        if (!match) match = data.data[0]; // Accept if only one result
         const imgUrl = match.images.large || match.images.small;
         imageCache[card.id] = imgUrl;
-        if (currentModalCard && currentModalCard.id === card.id) {
-          showCardImage(imgUrl);
-        }
+        if (currentModalCard && currentModalCard.id === card.id) showCardImage(imgUrl);
       } else {
-        // Fallback: name only
-        fetchImageByName(card);
+        // Fallback: search by name keywords
+        fetchImageByName(card, nameWords, num);
       }
     })
     .catch(() => {
-      fetchImageByName(card);
+      fetchImageByName(card, nameWords, num);
     });
 }
 
-function fetchImageByName(card) {
-  const query = encodeURIComponent(`name:"${card.name}"`);
+function fetchImageByName(card, nameWords, num) {
+  const query = encodeURIComponent(nameWords);
   fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=10&select=id,name,number,set,images`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        const num = card.cardNumber.split('/')[0].trim();
         let match = data.data.find(c => c.number === num);
+        if (!match) match = data.data.find(c => c.set && c.set.name === card.set);
         if (!match) match = data.data[0];
         const imgUrl = match.images.large || match.images.small;
         imageCache[card.id] = imgUrl;
-        if (currentModalCard && currentModalCard.id === card.id) {
-          showCardImage(imgUrl);
-        }
+        if (currentModalCard && currentModalCard.id === card.id) showCardImage(imgUrl);
       } else {
-        imageCache[card.id] = null;
-        if (currentModalCard && currentModalCard.id === card.id) {
-          showImagePlaceholder('No image found');
-        }
+        imageCache[card.id] = 'failed';
+        if (currentModalCard && currentModalCard.id === card.id) showImagePlaceholder('No image found');
       }
     })
     .catch(() => {
-      imageCache[card.id] = null;
-      if (currentModalCard && currentModalCard.id === card.id) {
-        showImagePlaceholder('Could not load image');
-      }
+      imageCache[card.id] = 'failed';
+      if (currentModalCard && currentModalCard.id === card.id) showImagePlaceholder('Could not load image');
     });
 }
 
