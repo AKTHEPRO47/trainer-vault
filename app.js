@@ -582,11 +582,37 @@ function closeModal() {
 }
 
 /* ============================================================
-   CARD IMAGE LOADING (Pokémon TCG API)
+   CARD IMAGE LOADING (direct URL — no API key needed)
    ============================================================ */
+const SET_IDS = {
+  '151':'sv3pt5','Ancient Origins':'xy7','Ascended Heroes':'me2pt5',
+  'Astral Radiance':'swsh10','BREAKpoint':'xy9','BREAKthrough':'xy8',
+  'Battle Styles':'swsh5','Black Bolt':'zsv10pt5','Boundaries Crossed':'bw7',
+  'Brilliant Stars':'swsh9','Burning Shadows':'sm3','Celebrations':'cel25',
+  'Celestial Storm':'sm7','Champion\'s Path':'swsh3pt5','Chilling Reign':'swsh6',
+  'Cosmic Eclipse':'sm12','Crimson Invasion':'sm4','Crown Zenith':'swsh12pt5',
+  'Darkness Ablaze':'swsh3','Destined Rivals':'sv10','Dragon Majesty':'sm7pt5',
+  'Evolutions':'xy12','Evolving Skies':'swsh7','Fates Collide':'xy10',
+  'Flashfire':'xy2','Forbidden Light':'sm6','Furious Fists':'xy3',
+  'Fusion Strike':'swsh8','Guardians Rising':'sm2','Hidden Fates':'sm11pt5',
+  'Journey Together':'sv9','Lost Origin':'swsh11','Lost Thunder':'sm8',
+  'Mega Evolution':'me1','Noble Victories':'bw3','Obsidian Flames':'sv3',
+  'Paldea Evolved':'sv2','Paldean Fates':'sv4pt5','Paradox Rift':'sv4',
+  'Phantasmal Flames':'me2','Phantom Forces':'xy4','Plasma Blast':'bw10',
+  'Plasma Freeze':'bw9','Plasma Storm':'bw8','Pokemon GO':'pgo',
+  'Primal Clash':'xy5','Prismatic Evolutions':'sv8pt5','Rebel Clash':'swsh2',
+  'Roaring Skies':'xy6','SV Promos':'svp','SWSH Promos':'swshp',
+  'Scarlet & Violet Base':'sv1','Shining Fates':'swsh4pt5',
+  'Shining Legends':'sm3pt5','Shrouded Fable':'sv6pt5','Silver Tempest':'swsh12',
+  'Steam Siege':'xy11','Stellar Crown':'sv7','Sun & Moon Base':'sm1',
+  'Surging Sparks':'sv8','Sword & Shield Base':'swsh1','Team Up':'sm9',
+  'Temporal Forces':'sv5','Twilight Masquerade':'sv6','Ultra Prism':'sm5',
+  'Unbroken Bonds':'sm10','Unified Minds':'sm11','Vivid Voltage':'swsh4',
+  'White Flare':'rsv10pt5','XY Promos':'xyp'
+};
+
 function loadCardImage(card) {
   const wrap = document.getElementById('modalImageWrap');
-  const placeholder = document.getElementById('modalImagePlaceholder');
 
   // Don't permanently cache failures — allow retry
   if (imageCache[card.id] === 'failed') {
@@ -605,43 +631,46 @@ function loadCardImage(card) {
   // Show loading state
   showImagePlaceholder('Loading card image...');
 
-  // Clean name for API search: strip apostrophes and parenthetical content
-  const cleanName = card.name.replace(/'/g, '').replace(/\s*\(.*?\)/g, '').trim();
-  // Split into keywords for broader matching
-  const nameWords = cleanName.split(/\s+/).map(w => `name:${w}`).join(' ');
+  const setId = SET_IDS[card.set];
   const num = card.cardNumber.split('/')[0].trim();
 
-  // Primary: search by number + set name (fast indexed query), verify name
-  const query = encodeURIComponent(`number:${num} set.name:"${card.set}"`);
+  if (setId) {
+    // Build direct image URL — no API call needed
+    const hiRes = `https://images.pokemontcg.io/${setId}/${num}_hires.png`;
+    const loRes = `https://images.pokemontcg.io/${setId}/${num}.png`;
+    tryImageUrl(card, hiRes, loRes);
+  } else {
+    // Unknown set — fall back to API search
+    fetchImageFromApi(card, num);
+  }
+}
+
+function tryImageUrl(card, primaryUrl, fallbackUrl) {
+  const img = new Image();
+  img.onload = () => {
+    imageCache[card.id] = primaryUrl;
+    if (currentModalCard && currentModalCard.id === card.id) showCardImage(primaryUrl);
+  };
+  img.onerror = () => {
+    if (fallbackUrl) {
+      tryImageUrl(card, fallbackUrl, null);
+    } else {
+      imageCache[card.id] = 'failed';
+      if (currentModalCard && currentModalCard.id === card.id) showImagePlaceholder('No image found (tap to retry)');
+    }
+  };
+  img.src = primaryUrl;
+}
+
+function fetchImageFromApi(card, num) {
+  const cleanName = card.name.replace(/'/g, '').replace(/\s*\(.*?\)/g, '').trim();
+  const nameWords = cleanName.split(/\s+/).map(w => `name:${w}`).join(' ');
+  const query = encodeURIComponent(`${nameWords} number:${num}`);
   fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=id,name,number,images`)
     .then(r => r.json())
     .then(data => {
       if (data.data && data.data.length > 0) {
-        // Verify name matches
-        let match = data.data.find(c => c.name.replace(/'/g, '').toLowerCase().includes(cleanName.split(/\s+/)[0].toLowerCase()));
-        if (!match) match = data.data[0]; // Accept if only one result
-        const imgUrl = match.images.large || match.images.small;
-        imageCache[card.id] = imgUrl;
-        if (currentModalCard && currentModalCard.id === card.id) showCardImage(imgUrl);
-      } else {
-        // Fallback: search by name keywords
-        fetchImageByName(card, nameWords, num);
-      }
-    })
-    .catch(() => {
-      fetchImageByName(card, nameWords, num);
-    });
-}
-
-function fetchImageByName(card, nameWords, num) {
-  const query = encodeURIComponent(nameWords);
-  fetch(`https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=10&select=id,name,number,set,images`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.data && data.data.length > 0) {
-        let match = data.data.find(c => c.number === num);
-        if (!match) match = data.data.find(c => c.set && c.set.name === card.set);
-        if (!match) match = data.data[0];
+        const match = data.data[0];
         const imgUrl = match.images.large || match.images.small;
         imageCache[card.id] = imgUrl;
         if (currentModalCard && currentModalCard.id === card.id) showCardImage(imgUrl);
