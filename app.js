@@ -11,6 +11,7 @@ let quickScanOpen = false;
 let searchTimeout = null;
 let saveTimeout = null;
 let imageCache = {}; // cardId -> image URL
+let adminToken = null;
 
 const CONDITIONS = ['Mint','NM','LP','MP','HP','HP+'];
 const ERA_ORDER = ['Black & White','XY','Sun & Moon','Sword & Shield','Scarlet & Violet','Mega Evolution'];
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupViewTabs();
   setupGrading();
   setupQuickScan();
+  verifyAdminToken();
   applyFiltersAndRender();
 });
 
@@ -35,21 +37,28 @@ document.addEventListener('DOMContentLoaded', async () => {
    LOAD CARDS (static JSON file — works on any host)
    ============================================================ */
 async function loadCards() {
+  let raw = null;
+  // Try API endpoint first (supports admin-modified cards)
   try {
-    const resp = await fetch('/trainer_vault_cards.json');
-    if (resp.ok) {
-      const raw = await resp.json();
-      ALL_CARDS = raw.map(c => ({
-        id: c.id,
-        name: c.name,
-        cardNumber: c.card_number,
-        set: c.set_name,
-        era: c.era,
-        variant: c.variant,
-      }));
-    }
-  } catch(e) {
-    console.warn('Could not fetch cards.', e);
+    const resp = await fetch('/api/cards');
+    if (resp.ok) raw = await resp.json();
+  } catch(e) {}
+  // Fallback to static file
+  if (!raw) {
+    try {
+      const resp = await fetch('/trainer_vault_cards.json');
+      if (resp.ok) raw = await resp.json();
+    } catch(e) {}
+  }
+  if (raw && Array.isArray(raw)) {
+    ALL_CARDS = raw.map(c => ({
+      id: c.id,
+      name: c.name,
+      cardNumber: c.card_number,
+      set: c.set_name,
+      era: c.era,
+      variant: c.variant,
+    }));
   }
   if (!ALL_CARDS.length) {
     console.error('No cards loaded!');
@@ -538,6 +547,10 @@ function openModal(cardId) {
   document.getElementById('modalPrice').oninput = (e) => { st.purchasePrice = parseFloat(e.target.value) || null; saveCollection(); updateStats(); };
   document.getElementById('modalDate').oninput = (e) => { st.purchaseDate = e.target.value || null; saveCollection(); };
   document.getElementById('modalNotes').oninput = (e) => { st.notes = e.target.value; saveCollection(); };
+
+  // Show admin controls if logged in
+  const adminControls = document.getElementById('modalAdminControls');
+  if (adminControls) adminControls.style.display = isAdminLoggedIn() ? 'block' : 'none';
 }
 
 function closeModal() {
@@ -968,7 +981,9 @@ document.addEventListener('keydown', (e) => {
       toggleChatbot();
       break;
     case 'escape':
-      if (document.getElementById('modalOverlay').classList.contains('open')) closeModal();
+      if (document.getElementById('adminLoginOverlay').classList.contains('open')) closeAdminLogin();
+      else if (document.getElementById('adminPanelOverlay').classList.contains('open')) closeAdminPanel();
+      else if (document.getElementById('modalOverlay').classList.contains('open')) closeModal();
       else if (document.getElementById('chatbotPanel').classList.contains('open')) toggleChatbot();
       break;
   }
@@ -981,6 +996,237 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+/* ============================================================
+   ADMIN
+   ============================================================ */
+function isAdminLoggedIn() {
+  if (!adminToken) adminToken = sessionStorage.getItem('adminToken');
+  return !!adminToken;
+}
+
+function updateAdminButton() {
+  const btn = document.getElementById('adminBtn');
+  if (btn) btn.classList.toggle('active', isAdminLoggedIn());
+}
+
+function toggleAdmin() {
+  if (isAdminLoggedIn()) {
+    openAdminPanel();
+  } else {
+    openAdminLogin();
+  }
+}
+
+function openAdminLogin() {
+  document.getElementById('adminLoginOverlay').classList.add('open');
+  document.getElementById('adminPassword').value = '';
+  document.getElementById('adminLoginError').style.display = 'none';
+  setTimeout(() => document.getElementById('adminPassword').focus(), 100);
+}
+
+function closeAdminLogin() {
+  document.getElementById('adminLoginOverlay').classList.remove('open');
+}
+
+async function adminLogin() {
+  const pw = document.getElementById('adminPassword').value;
+  const errEl = document.getElementById('adminLoginError');
+  if (!pw) {
+    errEl.textContent = 'Please enter a password';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const resp = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.token) {
+      adminToken = data.token;
+      sessionStorage.setItem('adminToken', adminToken);
+      closeAdminLogin();
+      updateAdminButton();
+      openAdminPanel();
+    } else {
+      errEl.textContent = data.error || 'Login failed';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error. Is the server running?';
+    errEl.style.display = 'block';
+  }
+}
+
+function adminLogout() {
+  adminToken = null;
+  sessionStorage.removeItem('adminToken');
+  updateAdminButton();
+  closeAdminPanel();
+}
+
+function openAdminPanel() {
+  document.getElementById('adminPanelOverlay').classList.add('open');
+  document.getElementById('adminCardCount').textContent = 'Managing ' + ALL_CARDS.length + ' cards';
+  document.getElementById('adminCardName').value = '';
+  document.getElementById('adminCardNumber').value = '';
+  document.getElementById('adminSetName').value = '';
+  document.getElementById('adminEra').value = '';
+  document.getElementById('adminVariant').value = '';
+  document.getElementById('adminFormError').style.display = 'none';
+  document.getElementById('adminFormSuccess').style.display = 'none';
+}
+
+function closeAdminPanel() {
+  document.getElementById('adminPanelOverlay').classList.remove('open');
+}
+
+async function adminAddCard() {
+  const errEl = document.getElementById('adminFormError');
+  const successEl = document.getElementById('adminFormSuccess');
+  errEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  const cardData = {
+    name: document.getElementById('adminCardName').value.trim(),
+    card_number: document.getElementById('adminCardNumber').value.trim(),
+    set_name: document.getElementById('adminSetName').value.trim(),
+    era: document.getElementById('adminEra').value,
+    variant: document.getElementById('adminVariant').value,
+  };
+
+  if (!cardData.name || !cardData.card_number || !cardData.set_name || !cardData.era || !cardData.variant) {
+    errEl.textContent = 'All fields are required';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const resp = await fetch('/api/admin/cards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+      body: JSON.stringify(cardData)
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      successEl.textContent = 'Added: ' + data.card.name + ' (ID: ' + data.card.id + ')';
+      successEl.style.display = 'block';
+      ALL_CARDS.push({
+        id: data.card.id,
+        name: data.card.name,
+        cardNumber: data.card.card_number,
+        set: data.card.set_name,
+        era: data.card.era,
+        variant: data.card.variant,
+      });
+      applyFiltersAndRender();
+      document.getElementById('adminCardCount').textContent = 'Managing ' + ALL_CARDS.length + ' cards';
+      document.getElementById('adminCardName').value = '';
+      document.getElementById('adminCardNumber').value = '';
+      document.getElementById('adminSetName').value = '';
+      document.getElementById('adminEra').value = '';
+      document.getElementById('adminVariant').value = '';
+    } else if (resp.status === 401) {
+      errEl.textContent = 'Session expired. Please login again.';
+      errEl.style.display = 'block';
+      adminLogout();
+    } else {
+      errEl.textContent = data.error || 'Failed to add card';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  }
+}
+
+async function adminDeleteCard(cardId) {
+  if (!confirm('Delete this card permanently? This cannot be undone.')) return;
+  try {
+    const resp = await fetch('/api/admin/cards/' + cardId, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + adminToken }
+    });
+    if (resp.ok) {
+      ALL_CARDS = ALL_CARDS.filter(c => c.id !== cardId);
+      delete collectionState[cardId];
+      saveCollection();
+      closeModal();
+      applyFiltersAndRender();
+    } else if (resp.status === 401) {
+      alert('Session expired. Please login again.');
+      adminLogout();
+    } else {
+      const data = await resp.json();
+      alert(data.error || 'Failed to delete card');
+    }
+  } catch(e) {
+    alert('Connection error');
+  }
+}
+
+async function adminEditCard(cardId) {
+  const card = ALL_CARDS.find(c => c.id === cardId);
+  if (!card) return;
+
+  const name = prompt('Card Name:', card.name);
+  if (name === null) return;
+  const cardNumber = prompt('Card Number:', card.cardNumber);
+  if (cardNumber === null) return;
+  const setName = prompt('Set Name:', card.set);
+  if (setName === null) return;
+  const era = prompt('Era (Black & White, XY, Sun & Moon, Sword & Shield, Scarlet & Violet, Mega Evolution):', card.era);
+  if (era === null) return;
+  const variant = prompt('Variant (Full Art, Illustration Rare, Special Illustration Rare, Rainbow, Secret):', card.variant);
+  if (variant === null) return;
+
+  if (!name.trim() || !cardNumber.trim() || !setName.trim() || !era.trim() || !variant.trim()) {
+    alert('All fields are required');
+    return;
+  }
+
+  try {
+    const resp = await fetch('/api/admin/cards/' + cardId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+      body: JSON.stringify({ name: name.trim(), card_number: cardNumber.trim(), set_name: setName.trim(), era: era.trim(), variant: variant.trim() })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      card.name = data.card.name;
+      card.cardNumber = data.card.card_number;
+      card.set = data.card.set_name;
+      card.era = data.card.era;
+      card.variant = data.card.variant;
+      openModal(cardId);
+      applyFiltersAndRender();
+    } else if (resp.status === 401) {
+      alert('Session expired. Please login again.');
+      adminLogout();
+    } else {
+      const data = await resp.json();
+      alert(data.error || 'Failed to edit card');
+    }
+  } catch(e) {
+    alert('Connection error');
+  }
+}
+
+async function verifyAdminToken() {
+  if (!isAdminLoggedIn()) return;
+  try {
+    const resp = await fetch('/api/admin/verify', {
+      headers: { 'Authorization': 'Bearer ' + adminToken }
+    });
+    if (!resp.ok) {
+      adminToken = null;
+      sessionStorage.removeItem('adminToken');
+    }
+  } catch(e) {}
+  updateAdminButton();
 }
 
 /* ============================================================

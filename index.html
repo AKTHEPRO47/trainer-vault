@@ -61,6 +61,10 @@
         <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/></svg>
         <span class="nav-btn-tooltip">Theme</span>
       </button>
+      <button class="nav-btn" id="adminBtn" onclick="toggleAdmin()" title="Admin">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span class="nav-btn-tooltip">Admin</span>
+      </button>
     </div>
   </header>
 
@@ -247,6 +251,13 @@
         <svg viewBox="0 0 24 24" style="width:16px;height:16px;display:inline-block;vertical-align:middle;stroke:currentColor;fill:none;stroke-width:2;margin-right:6px;"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Price Check
       </button>
     </div>
+
+    <div class="modal-section" id="modalAdminControls" style="display:none; text-align:center; border-top:1px solid var(--glass-border); padding-top:16px; margin-top:8px;">
+      <div style="display:flex; gap:10px; justify-content:center;">
+        <button class="action-btn" onclick="adminEditCard(currentModalCard.id)" style="border-color:var(--copper); color:var(--copper);">Edit Card</button>
+        <button class="action-btn" onclick="adminDeleteCard(currentModalCard.id)" style="border-color:var(--crimson); color:var(--crimson);">Delete Card</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -281,6 +292,75 @@
     <div class="chat-input-row">
       <input class="chat-input" id="chatInput" placeholder="Ask about a card..." onkeydown="if(event.key==='Enter')sendChat()">
       <button class="chat-send" onclick="sendChat()">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADMIN LOGIN MODAL ============ -->
+<div class="modal-overlay" id="adminLoginOverlay" onclick="if(event.target===this)closeAdminLogin()">
+  <div class="modal glass" style="max-width:400px;">
+    <button class="modal-close" onclick="closeAdminLogin()">&#10005;</button>
+    <h2 style="font-family:'Bebas Neue',sans-serif; font-size:1.8rem; color:var(--gold); margin-bottom:4px;">Admin Login</h2>
+    <div class="modal-sub">Authenticate to manage cards</div>
+    <div class="modal-section">
+      <label>Password</label>
+      <input type="password" class="modal-input" id="adminPassword" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')adminLogin()">
+    </div>
+    <div id="adminLoginError" style="color:var(--crimson); font-size:0.8rem; font-family:'DM Mono',monospace; margin-bottom:12px; display:none;"></div>
+    <button class="action-btn gold" onclick="adminLogin()" style="width:100%; padding:12px; font-size:0.9rem;">Login</button>
+  </div>
+</div>
+
+<!-- ============ ADMIN PANEL ============ -->
+<div class="modal-overlay" id="adminPanelOverlay" onclick="if(event.target===this)closeAdminPanel()">
+  <div class="modal glass" style="max-width:560px;">
+    <button class="modal-close" onclick="closeAdminPanel()">&#10005;</button>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <h2 style="font-family:'Bebas Neue',sans-serif; font-size:1.8rem; color:var(--gold); margin:0;">Admin Panel</h2>
+      <button class="action-btn" onclick="adminLogout()" style="color:var(--crimson); border-color:rgba(255,34,85,0.4);">Logout</button>
+    </div>
+    <div class="modal-sub" id="adminCardCount">Managing 0 cards</div>
+
+    <div style="border-top:1px solid var(--glass-border); margin:16px 0; padding-top:16px;">
+      <h3 style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:0.85rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">Add New Card</h3>
+      <div class="modal-section">
+        <label>Card Name</label>
+        <input type="text" class="modal-input" id="adminCardName" placeholder="e.g., Professor's Research">
+      </div>
+      <div class="modal-section">
+        <label>Card Number</label>
+        <input type="text" class="modal-input" id="adminCardNumber" placeholder="e.g., 147/172">
+      </div>
+      <div class="modal-section">
+        <label>Set Name</label>
+        <input type="text" class="modal-input" id="adminSetName" placeholder="e.g., Brilliant Stars">
+      </div>
+      <div class="modal-section">
+        <label>Era</label>
+        <select class="sort-select" id="adminEra" style="width:100%; padding:10px 14px;">
+          <option value="">Select Era...</option>
+          <option value="Black &amp; White">Black &amp; White</option>
+          <option value="XY">XY</option>
+          <option value="Sun &amp; Moon">Sun &amp; Moon</option>
+          <option value="Sword &amp; Shield">Sword &amp; Shield</option>
+          <option value="Scarlet &amp; Violet">Scarlet &amp; Violet</option>
+          <option value="Mega Evolution">Mega Evolution</option>
+        </select>
+      </div>
+      <div class="modal-section">
+        <label>Variant</label>
+        <select class="sort-select" id="adminVariant" style="width:100%; padding:10px 14px;">
+          <option value="">Select Variant...</option>
+          <option value="Full Art">Full Art</option>
+          <option value="Illustration Rare">Illustration Rare</option>
+          <option value="Special Illustration Rare">Special Illustration Rare</option>
+          <option value="Rainbow">Rainbow</option>
+          <option value="Secret">Secret</option>
+        </select>
+      </div>
+      <div id="adminFormError" style="color:var(--crimson); font-size:0.8rem; font-family:'DM Mono',monospace; margin-bottom:12px; display:none;"></div>
+      <div id="adminFormSuccess" style="color:var(--mint); font-size:0.8rem; font-family:'DM Mono',monospace; margin-bottom:12px; display:none;"></div>
+      <button class="action-btn gold" onclick="adminAddCard()" style="width:100%; padding:12px; font-size:0.9rem;">Add Card</button>
     </div>
   </div>
 </div>

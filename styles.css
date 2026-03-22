@@ -626,6 +626,17 @@ textarea.modal-input { min-height: 80px; resize: vertical; }
 /* ============ DIM MODE ============ */
 body.dim-mode { --bg-void: #0F1318; --glass: rgba(255,255,255,0.06); --glass-border: rgba(196,94,44,0.22); }
 
+/* ============ ADMIN ============ */
+#adminBtn.active svg { fill: var(--gold); stroke: var(--gold); }
+#adminLoginOverlay .modal,
+#adminPanelOverlay .modal { animation: modalSlideIn 0.3s var(--ease-silk); }
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+#adminPanelOverlay select.sort-select { background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); color: var(--text-primary); }
+#adminPanelOverlay select.sort-select option { background: #111; color: #eee; }
+
 /* ============ SCROLLBAR ============ */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
