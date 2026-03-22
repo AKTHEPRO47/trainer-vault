@@ -298,19 +298,23 @@ function renderGrid() {
   const grid = document.getElementById('cardGrid');
   grid.innerHTML = '';
   const fragment = document.createDocumentFragment();
-  filteredCards.forEach(card => {
+  filteredCards.forEach((card, idx) => {
     const st = getCardState(card.id);
     const tile = document.createElement('div');
-    tile.className = 'card-tile glass ' + (st.inCollection ? 'collected' : 'uncollected') + (bulkMode && bulkSelected.has(card.id) ? ' bulk-selected' : '');
+    tile.className = 'card-tile glass card-enter ' + (st.inCollection ? 'collected' : 'uncollected') + (bulkMode && bulkSelected.has(card.id) ? ' bulk-selected' : '');
     tile.dataset.id = card.id;
+    tile.style.animationDelay = Math.min(idx * 18, 600) + 'ms';
 
     const eraKey = ERA_KEYS[card.era] || 'bw';
     const condClass = st.condition ? ('cond-' + st.condition.replace('+','P')) : '';
     const condBadge = st.condition ? `<span class="badge badge-condition ${condClass}">${st.condition}</span>` : '';
     const wantBadge = st.wantList ? '<span class="badge badge-want">WANT</span>' : '';
+    const rarityScore = computeRarityScore(card);
+    const rarityStars = rarityScore >= 90 ? '★★★★★' : rarityScore >= 70 ? '★★★★' : rarityScore >= 50 ? '★★★' : rarityScore >= 30 ? '★★' : '★';
 
     tile.innerHTML = `
       <div class="collected-check">${st.inCollection ? '✓' : ''}</div>
+      <div class="tile-rarity">${rarityStars}</div>
       <div>
         <div class="card-name">${escapeHtml(card.name)}</div>
         <div class="card-number">${escapeHtml(card.cardNumber)}</div>
@@ -556,6 +560,7 @@ function updateStats() {
   renderTopSets();
   renderCondChart();
   renderVariantRadar();
+  renderHeatmapCalendar();
 }
 
 /* ============================================================
@@ -569,6 +574,17 @@ function openModal(cardId) {
 
   document.getElementById('modalName').textContent = card.name;
   document.getElementById('modalSub').textContent = `${card.cardNumber} · ${card.set} · ${card.era} · ${card.variant}`;
+
+  // Rarity score badge
+  const rscore = computeRarityScore(card);
+  const rstars = rscore >= 90 ? '★★★★★' : rscore >= 70 ? '★★★★' : rscore >= 50 ? '★★★' : rscore >= 30 ? '★★' : '★';
+  const rlabel = rscore >= 90 ? 'Legendary' : rscore >= 70 ? 'Ultra Rare' : rscore >= 50 ? 'Rare' : rscore >= 30 ? 'Uncommon' : 'Common';
+  document.getElementById('modalRarityBadge').innerHTML = `<span class="rarity-stars">${rstars}</span> ${rscore}/100 <span class="rarity-label">${rlabel}</span>`;
+
+  // Reset lore
+  const loreText = document.getElementById('modalLoreText');
+  loreText.textContent = '';
+  loreText.classList.remove('visible');
 
   // Load card image
   loadCardImage(card);
@@ -1176,10 +1192,22 @@ document.addEventListener('keydown', (e) => {
       shareCollection();
       break;
     case 'escape':
-      if (document.getElementById('adminLoginOverlay').classList.contains('open')) closeAdminLogin();
+      if (document.getElementById('shortcutOverlay').classList.contains('open')) closeShortcutOverlay();
+      else if (document.getElementById('advisorOverlay').classList.contains('open')) closeAdvisorPanel();
+      else if (document.getElementById('adminLoginOverlay').classList.contains('open')) closeAdminLogin();
       else if (document.getElementById('adminPanelOverlay').classList.contains('open')) closeAdminPanel();
       else if (document.getElementById('modalOverlay').classList.contains('open')) closeModal();
       else if (document.getElementById('chatbotPanel').classList.contains('open')) toggleChatbot();
+      break;
+    case '?':
+      e.preventDefault();
+      toggleShortcutOverlay();
+      break;
+    case 't':
+      if (!e.ctrlKey && !e.metaKey) toggleDimMode();
+      break;
+    case 'a':
+      if (!e.ctrlKey && !e.metaKey) openAdvisorPanel();
       break;
   }
 });
@@ -1470,6 +1498,7 @@ function checkMilestones() {
       unlockedAchievements[key] = Date.now();
       localStorage.setItem('trainerVaultAchievements', JSON.stringify(unlockedAchievements));
       showToast('🎉 Set Complete!', setName + ' — All ' + data.total + ' cards!');
+      launchConfetti();
     }
   });
 
@@ -1483,6 +1512,7 @@ function checkMilestones() {
       unlockedAchievements[key] = Date.now();
       localStorage.setItem('trainerVaultAchievements', JSON.stringify(unlockedAchievements));
       showToast('🏅 Era Complete!', era + ' — All ' + eraCards.length + ' cards!');
+      launchConfetti();
     }
   });
 }
@@ -1842,6 +1872,377 @@ function renderSparkline() {
       <circle cx="${w}" cy="${lastY.toFixed(1)}" r="2.5" fill="var(--gold)"/>
     </svg>
     <div style="font-size:0.55rem;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:2px;">${history.length}d trend</div>`;
+}
+
+/* ============================================================
+   RARITY SCORE SYSTEM
+   ============================================================ */
+function computeRarityScore(card) {
+  let score = 0;
+  // Variant weight (0-40)
+  const variantScores = { 'Special Illustration Rare': 40, 'Rainbow': 30, 'Secret': 25, 'Illustration Rare': 18, 'Full Art': 10 };
+  score += variantScores[card.variant] || 5;
+  // Era age bonus (0-25) — older = rarer
+  const eraAge = { 'Black & White': 25, 'XY': 20, 'Sun & Moon': 15, 'Sword & Shield': 10, 'Scarlet & Violet': 5, 'Mega Evolution': 12 };
+  score += eraAge[card.era] || 5;
+  // Set scarcity — fewer cards in set = rarer (0-20)
+  const setCards = ALL_CARDS.filter(c => c.set === card.set).length;
+  score += setCards <= 3 ? 20 : setCards <= 8 ? 15 : setCards <= 15 ? 10 : 5;
+  // Collectability — how many people have it (0-15)
+  const collectedPct = ALL_CARDS.length ? ALL_CARDS.filter(c => getCardState(c.id).inCollection).length / ALL_CARDS.length : 0;
+  const st = getCardState(card.id);
+  score += st.inCollection ? 5 : 15; // Missing cards rated higher rarity
+  return Math.min(100, Math.max(1, score));
+}
+
+/* ============================================================
+   AI CARD LORE GENERATOR
+   ============================================================ */
+function generateCardLore() {
+  if (!currentModalCard) return;
+  const card = currentModalCard;
+  const loreEl = document.getElementById('modalLoreText');
+
+  const trainerAdjectives = ['legendary', 'mysterious', 'renowned', 'enigmatic', 'fearless', 'brilliant', 'cunning', 'noble', 'fierce', 'serene', 'ancient', 'fabled'];
+  const eraLore = {
+    'Black & White': 'the Unova twilight, when ideals and truth clashed across an awakening world',
+    'XY': 'the Kalos renaissance, as Mega Evolution reshaped the bond between Trainers and Pokémon',
+    'Sun & Moon': 'the Alolan dawn, where Ultra Beasts breached dimensional boundaries',
+    'Sword & Shield': 'the Galar expedition, amidst Dynamax storms and ancient legends',
+    'Scarlet & Violet': 'the Paldean chronicle, as time paradoxes echoed through Area Zero',
+    'Mega Evolution': 'the Mega Evolution surge, when primal energies awakened dormant power'
+  };
+  const variantLore = {
+    'Full Art': 'rendered in sweeping, full-canvas artistry that captures their essence',
+    'Illustration Rare': 'depicted in a rare illustration that reveals a hidden side of their story',
+    'Special Illustration Rare': 'immortalized in an extraordinarily rare piece — one of the most coveted in existence',
+    'Rainbow': 'transformed into a prismatic vision, shimmering with rainbow energy from beyond',
+    'Secret': 'hidden as a secret treasure within the set, known only to the most dedicated seekers'
+  };
+  const setFlavor = [
+    `First documented in the ${card.set} archives`,
+    `Their legend was first recorded in ${card.set}`,
+    `This depiction originates from the ${card.set} collection`,
+    `Discovered within the vaults of ${card.set}`,
+    `Catalogued during the ${card.set} expedition`
+  ];
+  const endings = [
+    'Collectors who possess this card carry a piece of history.',
+    'Few have witnessed this card in person — even fewer own it.',
+    'This card\'s presence in any collection elevates it to legendary status.',
+    'Trading circles whisper of its beauty and power.',
+    'A cornerstone piece for any serious Full Art Trainer collection.',
+    'Its value transcends mere currency — it represents devotion to the craft.'
+  ];
+
+  const adj = trainerAdjectives[Math.floor(Math.random() * trainerAdjectives.length)];
+  const eraText = eraLore[card.era] || 'an uncharted era of Pokémon history';
+  const varText = variantLore[card.variant] || 'captured in stunning detail';
+  const setLine = setFlavor[Math.floor(Math.random() * setFlavor.length)];
+  const ending = endings[Math.floor(Math.random() * endings.length)];
+  const rscore = computeRarityScore(card);
+  const rTier = rscore >= 90 ? 'a legendary artifact' : rscore >= 70 ? 'an ultra-rare treasure' : rscore >= 50 ? 'a prized collectible' : 'a notable piece';
+
+  const lore = `${card.name} — the ${adj} trainer of ${eraText}. ${setLine}, ${varText}. With a rarity score of ${rscore}/100, this card is considered ${rTier} among Full Art collectors. ${card.cardNumber} bears witness to a singular moment in the Pokémon TCG timeline. ${ending}`;
+
+  loreEl.textContent = lore;
+  loreEl.classList.add('visible');
+}
+
+/* ============================================================
+   KEYBOARD SHORTCUT OVERLAY
+   ============================================================ */
+function toggleShortcutOverlay() {
+  document.getElementById('shortcutOverlay').classList.toggle('open');
+}
+function closeShortcutOverlay() {
+  document.getElementById('shortcutOverlay').classList.remove('open');
+}
+
+/* ============================================================
+   AI SMART COLLECTION ADVISOR
+   ============================================================ */
+function openAdvisorPanel() {
+  document.getElementById('advisorOverlay').classList.add('open');
+  generateAdvisorInsights();
+}
+function closeAdvisorPanel() {
+  document.getElementById('advisorOverlay').classList.remove('open');
+}
+
+function generateAdvisorInsights() {
+  const content = document.getElementById('advisorContent');
+  if (!ALL_CARDS.length) {
+    content.innerHTML = '<div class="advisor-loading">No cards loaded yet.</div>';
+    return;
+  }
+
+  const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection);
+  const missing = ALL_CARDS.filter(c => !getCardState(c.id).inCollection);
+  const collectedCount = collected.length;
+  const totalCount = ALL_CARDS.length;
+
+  // 1. Nearest set completions
+  const sets = {};
+  ALL_CARDS.forEach(c => {
+    if (!sets[c.set]) sets[c.set] = { total: 0, collected: 0, missing: [] };
+    sets[c.set].total++;
+    if (getCardState(c.id).inCollection) sets[c.set].collected++;
+    else sets[c.set].missing.push(c);
+  });
+  const nearComplete = Object.entries(sets)
+    .filter(([_, d]) => d.collected > 0 && d.missing.length > 0 && d.missing.length <= 5)
+    .sort((a, b) => a[1].missing.length - b[1].missing.length)
+    .slice(0, 5);
+
+  // 2. Weakest eras (lowest collection %)
+  const eraStats = ERA_ORDER.map(era => {
+    const eraCards = ALL_CARDS.filter(c => c.era === era);
+    const eraCollected = eraCards.filter(c => getCardState(c.id).inCollection).length;
+    return { era, total: eraCards.length, collected: eraCollected, pct: eraCards.length ? Math.round((eraCollected / eraCards.length) * 100) : 0 };
+  }).sort((a, b) => a.pct - b.pct);
+
+  // 3. High-value targets (missing SIR and Rainbow cards)
+  const highValue = missing
+    .filter(c => c.variant === 'Special Illustration Rare' || c.variant === 'Rainbow')
+    .sort((a, b) => computeRarityScore(b) - computeRarityScore(a))
+    .slice(0, 6);
+
+  // 4. Collection personality
+  const variantCounts = {};
+  collected.forEach(c => { variantCounts[c.variant] = (variantCounts[c.variant] || 0) + 1; });
+  const topVariant = Object.entries(variantCounts).sort((a, b) => b[1] - a[1])[0];
+  const eraCounts = {};
+  collected.forEach(c => { eraCounts[c.era] = (eraCounts[c.era] || 0) + 1; });
+  const topEra = Object.entries(eraCounts).sort((a, b) => b[1] - a[1])[0];
+
+  let personalityText = '';
+  if (collectedCount === 0) {
+    personalityText = 'Your vault is empty! Start by adding cards from your favorite era. Set completions unlock achievements!';
+  } else {
+    const archetype = topVariant ? (
+      topVariant[0] === 'Special Illustration Rare' ? '🎨 The Art Connoisseur' :
+      topVariant[0] === 'Rainbow' ? '🌈 The Prismatic Hunter' :
+      topVariant[0] === 'Full Art' ? '🖼️ The Classic Collector' :
+      topVariant[0] === 'Secret' ? '🔒 The Secret Seeker' : '💎 The Illustrator'
+    ) : '🃏 The Beginner';
+    personalityText = `<strong>${archetype}</strong> — You favor <span class="highlight">${topVariant ? topVariant[0] : 'exploring'}</span> cards${topEra ? ` from the <span class="highlight">${topEra[0]}</span> era` : ''}. ` +
+      `With ${collectedCount}/${totalCount} cards (${Math.round(collectedCount/totalCount*100)}%), ` +
+      (collectedCount > totalCount * 0.75 ? 'you\'re approaching legendary status!' :
+       collectedCount > totalCount * 0.5 ? 'you\'re well past the halfway mark — keep pushing!' :
+       collectedCount > totalCount * 0.25 ? 'solid progress! Focus on set completions for achievements.' :
+       'every vault starts small. Target near-complete sets for quick wins!');
+  }
+
+  // 5. Smart suggestion
+  let smartTip = '';
+  if (nearComplete.length > 0) {
+    const best = nearComplete[0];
+    smartTip = `🎯 <strong>Top Priority:</strong> You're just <span class="highlight">${best[1].missing.length} card${best[1].missing.length > 1 ? 's' : ''}</span> away from completing <span class="highlight">${best[0]}</span>! ` +
+      `Missing: ${best[1].missing.map(c => c.name).join(', ')}.`;
+  } else if (missing.length > 0) {
+    const randomTarget = missing[Math.floor(Math.random() * Math.min(missing.length, 20))];
+    smartTip = `🎯 <strong>Next Target:</strong> Consider adding <span class="highlight">${randomTarget.name}</span> from ${randomTarget.set} (${randomTarget.variant}).`;
+  } else {
+    smartTip = '🏆 <strong>Incredible!</strong> You\'ve collected every single card! You are a true Vault Master!';
+  }
+
+  let html = '';
+
+  // Personality card
+  html += `<div class="advisor-card">
+    <div class="advisor-card-title"><span class="adv-icon">🧠</span> <span style="color:var(--gold)">Collector Profile</span></div>
+    <div class="advisor-card-body">${personalityText}</div>
+  </div>`;
+
+  // Smart tip
+  html += `<div class="advisor-card">
+    <div class="advisor-card-title"><span class="adv-icon">💡</span> <span style="color:var(--cyan)">Smart Recommendation</span></div>
+    <div class="advisor-card-body">${smartTip}</div>
+  </div>`;
+
+  // Near completions
+  if (nearComplete.length > 0) {
+    html += `<div class="advisor-card">
+      <div class="advisor-card-title"><span class="adv-icon">🏁</span> <span style="color:var(--mint)">Nearest Set Completions</span></div>
+      <div class="advisor-card-body"><ul>${nearComplete.map(([name, d]) =>
+        `<li><span class="highlight">${escapeHtml(name)}</span> — ${d.collected}/${d.total} (need ${d.missing.length}: <span class="dim">${d.missing.map(c => c.name).join(', ')}</span>)</li>`
+      ).join('')}</ul></div>
+    </div>`;
+  }
+
+  // Weakest eras
+  html += `<div class="advisor-card">
+    <div class="advisor-card-title"><span class="adv-icon">📊</span> <span style="color:var(--copper)">Era Weakness Analysis</span></div>
+    <div class="advisor-card-body"><ul>${eraStats.map(e =>
+      `<li><span class="highlight">${escapeHtml(e.era)}</span> — ${e.collected}/${e.total} (${e.pct}%) ${e.pct < 25 ? '⚠️ Needs attention' : e.pct >= 75 ? '✅ Strong' : ''}</li>`
+    ).join('')}</ul></div>
+  </div>`;
+
+  // High-value targets
+  if (highValue.length > 0) {
+    html += `<div class="advisor-card">
+      <div class="advisor-card-title"><span class="adv-icon">💎</span> <span style="color:var(--crimson)">High-Value Targets</span></div>
+      <div class="advisor-card-body"><ul>${highValue.map(c =>
+        `<li><span class="highlight">${escapeHtml(c.name)}</span> — ${escapeHtml(c.set)} · ${c.variant} · Score: ${computeRarityScore(c)}/100</li>`
+      ).join('')}</ul></div>
+    </div>`;
+  }
+
+  content.innerHTML = html;
+}
+
+/* ============================================================
+   COLLECTION HEATMAP CALENDAR
+   ============================================================ */
+function renderHeatmapCalendar() {
+  const el = document.getElementById('heatmapCalendar');
+  if (!el) return;
+
+  // Gather date data from collection
+  const dateCounts = {};
+  ALL_CARDS.forEach(c => {
+    const st = getCardState(c.id);
+    if (st.inCollection && st.purchaseDate) {
+      dateCounts[st.purchaseDate] = (dateCounts[st.purchaseDate] || 0) + 1;
+    }
+  });
+
+  // Also use history data from localStorage
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('trainerVaultHistory') || '[]'); } catch(e) {}
+
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 182); // ~26 weeks
+
+  const cellSize = 11, cellGap = 2, leftPad = 28, topPad = 16;
+  const totalCells = 183;
+  const weeks = Math.ceil(totalCells / 7);
+  const svgW = leftPad + weeks * (cellSize + cellGap) + 4;
+  const svgH = topPad + 7 * (cellSize + cellGap) + 4;
+
+  const maxCount = Math.max(1, ...Object.values(dateCounts));
+
+  const dayLabels = ['', 'M', '', 'W', '', 'F', ''];
+  let svg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">`;
+
+  // Day labels
+  for (let d = 0; d < 7; d++) {
+    if (dayLabels[d]) {
+      svg += `<text x="${leftPad - 6}" y="${topPad + d * (cellSize + cellGap) + cellSize - 2}" font-size="8" text-anchor="end">${dayLabels[d]}</text>`;
+    }
+  }
+
+  // Month labels
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let lastMonth = -1;
+
+  const cursor = new Date(startDate);
+  // Adjust to start on Sunday
+  cursor.setDate(cursor.getDate() - cursor.getDay());
+
+  for (let w = 0; w < weeks; w++) {
+    for (let d = 0; d < 7; d++) {
+      const dateStr = cursor.toISOString().slice(0, 10);
+      const count = dateCounts[dateStr] || 0;
+
+      if (cursor.getDate() <= 7 && cursor.getMonth() !== lastMonth && d === 0) {
+        lastMonth = cursor.getMonth();
+        svg += `<text x="${leftPad + w * (cellSize + cellGap)}" y="${topPad - 4}" font-size="7">${monthNames[cursor.getMonth()]}</text>`;
+      }
+
+      if (cursor <= today && cursor >= startDate) {
+        const intensity = count > 0 ? Math.min(1, count / maxCount * 0.8 + 0.2) : 0;
+        const fill = count === 0 ? 'rgba(255,255,255,0.04)' :
+          `rgba(255,215,0,${(intensity * 0.7 + 0.15).toFixed(2)})`;
+        const rx = leftPad + w * (cellSize + cellGap);
+        const ry = topPad + d * (cellSize + cellGap);
+        svg += `<rect x="${rx}" y="${ry}" width="${cellSize}" height="${cellSize}" rx="2" fill="${fill}" stroke="rgba(255,255,255,0.03)"><title>${dateStr}: ${count} card${count !== 1 ? 's' : ''}</title></rect>`;
+      }
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
+  svg += '</svg>';
+
+  const totalDates = Object.keys(dateCounts).length;
+  const totalAdded = Object.values(dateCounts).reduce((a, b) => a + b, 0);
+  el.innerHTML = svg + `<div style="font-size:0.55rem;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:4px;text-align:center;">${totalAdded} cards across ${totalDates} day${totalDates !== 1 ? 's' : ''}</div>`;
+}
+
+/* ============================================================
+   CONFETTI CELEBRATION
+   ============================================================ */
+function launchConfetti() {
+  const canvas = document.getElementById('confettiCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const particles = [];
+  const colors = ['#FFD700', '#FF2255', '#00FFFF', '#C45E2C', '#D4956A', '#00FF88', '#FF6B35', '#7B2FBE'];
+
+  for (let i = 0; i < 150; i++) {
+    particles.push({
+      x: canvas.width / 2 + (Math.random() - 0.5) * 200,
+      y: canvas.height / 2,
+      vx: (Math.random() - 0.5) * 16,
+      vy: Math.random() * -18 - 4,
+      size: Math.random() * 7 + 3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.3,
+      gravity: 0.25 + Math.random() * 0.15,
+      life: 1,
+      decay: 0.008 + Math.random() * 0.006,
+      shape: Math.random() > 0.5 ? 'rect' : 'circle'
+    });
+  }
+
+  let animId;
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+
+    particles.forEach(p => {
+      if (p.life <= 0) return;
+      alive = true;
+      p.x += p.vx;
+      p.vy += p.gravity;
+      p.y += p.vy;
+      p.vx *= 0.98;
+      p.rotation += p.rotSpeed;
+      p.life -= p.decay;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+
+      if (p.shape === 'rect') {
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+
+    if (alive) { animId = requestAnimationFrame(animate); }
+    else { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+  }
+
+  animate();
+  // Safety cleanup after 5 seconds
+  setTimeout(() => {
+    cancelAnimationFrame(animId);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, 5000);
 }
 
 /* ============================================================

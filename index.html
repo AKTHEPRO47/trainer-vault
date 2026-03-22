@@ -70,6 +70,10 @@
         <svg viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
         <span class="nav-btn-tooltip">Share</span>
       </button>
+      <button class="nav-btn" onclick="openAdvisorPanel()" title="AI Advisor">
+        <svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 014 4v1a2 2 0 012 2v3a8 8 0 01-16 0V9a2 2 0 012-2V6a4 4 0 014-4z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="11" r="1" fill="currentColor"/><circle cx="15" cy="11" r="1" fill="currentColor"/><path d="M9 16c1.5 1 4.5 1 6 0" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="nav-btn-tooltip">AI Advisor</span>
+      </button>
       <!-- Admin button hidden — backend code remains intact -->
     </div>
   </header>
@@ -124,6 +128,10 @@
     <div class="stat-card glass">
       <h3>Variant Radar</h3>
       <div class="radar-wrap" id="variantRadar"></div>
+    </div>
+    <div class="stat-card glass stat-card-wide">
+      <h3>Collection Heatmap</h3>
+      <div class="heatmap-wrap" id="heatmapCalendar"></div>
     </div>
   </div>
 
@@ -245,6 +253,14 @@
     </div>
     <h2 id="modalName"></h2>
     <div class="modal-sub" id="modalSub"></div>
+    <div class="rarity-score-badge" id="modalRarityBadge"></div>
+    <div class="ai-lore-section" id="modalLoreSection">
+      <button class="lore-gen-btn" onclick="generateCardLore()">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>
+        Generate AI Lore
+      </button>
+      <div class="lore-text" id="modalLoreText"></div>
+    </div>
 
     <div class="modal-section">
       <label>Collection</label>
@@ -403,6 +419,44 @@
     </div>
   </div>
 </div>
+
+<!-- ============ KEYBOARD SHORTCUT OVERLAY ============ -->
+<div class="shortcut-overlay" id="shortcutOverlay" onclick="if(event.target===this)closeShortcutOverlay()">
+  <div class="shortcut-panel glass">
+    <button class="modal-close" onclick="closeShortcutOverlay()">&#10005;</button>
+    <h2 class="shortcut-title">Keyboard Shortcuts</h2>
+    <div class="shortcut-grid">
+      <div class="shortcut-item"><kbd>/</kbd><span>Focus Search</span></div>
+      <div class="shortcut-item"><kbd>R</kbd><span>Random Card</span></div>
+      <div class="shortcut-item"><kbd>Q</kbd><span>Quick Scan</span></div>
+      <div class="shortcut-item"><kbd>P</kbd><span>Price Oracle</span></div>
+      <div class="shortcut-item"><kbd>B</kbd><span>Bulk Select</span></div>
+      <div class="shortcut-item"><kbd>S</kbd><span>Share Collection</span></div>
+      <div class="shortcut-item"><kbd>T</kbd><span>Cycle Theme</span></div>
+      <div class="shortcut-item"><kbd>A</kbd><span>AI Advisor</span></div>
+      <div class="shortcut-item"><kbd>?</kbd><span>This Panel</span></div>
+      <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ AI ADVISOR PANEL ============ -->
+<div class="advisor-overlay" id="advisorOverlay" onclick="if(event.target===this)closeAdvisorPanel()">
+  <div class="advisor-panel glass">
+    <button class="modal-close" onclick="closeAdvisorPanel()">&#10005;</button>
+    <div class="advisor-header">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--gold)" stroke-width="2"><path d="M12 2a4 4 0 014 4v1a2 2 0 012 2v3a8 8 0 01-16 0V9a2 2 0 012-2V6a4 4 0 014-4z"/><circle cx="9" cy="11" r="1" fill="var(--gold)"/><circle cx="15" cy="11" r="1" fill="var(--gold)"/><path d="M9 16c1.5 1 4.5 1 6 0" stroke="var(--gold)" stroke-width="1.5"/></svg>
+      <h2>AI Collection Advisor</h2>
+    </div>
+    <div class="advisor-sub">Smart recommendations based on your collection</div>
+    <div class="advisor-content" id="advisorContent">
+      <div class="advisor-loading">Analyzing your collection...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFETTI CANVAS ============ -->
+<canvas id="confettiCanvas"></canvas>
 
 <!-- TOAST NOTIFICATIONS -->
 <div class="toast-container" id="toastContainer"></div>

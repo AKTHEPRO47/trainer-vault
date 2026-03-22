@@ -1019,6 +1019,145 @@ body.light-mode .progress-ring .ring-bg { stroke: rgba(0,0,0,0.06); }
 #sparklineWrap { margin-top: 8px; text-align: center; }
 #sparklineWrap svg { display: inline-block; }
 
+/* ============ CARD ENTER ANIMATION ============ */
+@keyframes cardEnter {
+  0% { opacity: 0; transform: translateY(24px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-tile.card-enter {
+  animation: cardEnter 0.4s var(--ease-silk) both;
+}
+
+/* ============ RARITY SCORE BADGE ============ */
+.rarity-score-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 8px 0 4px; padding: 6px 14px; border-radius: 20px;
+  font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 700;
+  background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.2);
+  color: var(--gold);
+}
+.rarity-score-badge .rarity-stars { letter-spacing: 1px; }
+.rarity-score-badge .rarity-label { color: var(--text-dim); font-weight: 500; font-size: 0.65rem; }
+
+.card-tile .tile-rarity {
+  position: absolute; top: 6px; right: 8px; font-size: 0.55rem;
+  font-family: 'DM Mono', monospace; color: var(--gold); opacity: 0.7;
+}
+
+/* ============ AI LORE SECTION ============ */
+.ai-lore-section { margin: 8px 0 4px; text-align: center; }
+.lore-gen-btn {
+  background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.2);
+  color: var(--gold); border-radius: 12px; padding: 8px 18px;
+  font-family: 'DM Mono', monospace; font-size: 0.72rem; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: all 0.3s var(--ease-silk);
+}
+.lore-gen-btn:hover { background: rgba(255,215,0,0.15); border-color: rgba(255,215,0,0.4); }
+.lore-text {
+  margin-top: 8px; padding: 10px 14px; border-radius: 12px;
+  font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text-dim);
+  line-height: 1.5; text-align: left; display: none;
+  background: rgba(196,94,44,0.06); border: 1px solid rgba(196,94,44,0.12);
+}
+.lore-text.visible { display: block; animation: cardEnter 0.3s var(--ease-silk); }
+
+/* ============ KEYBOARD SHORTCUT OVERLAY ============ */
+.shortcut-overlay {
+  position: fixed; top:0; left:0; width:100%; height:100%; z-index: 400;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  display: none; justify-content: center; align-items: center;
+}
+.shortcut-overlay.open { display: flex; }
+.shortcut-panel {
+  max-width: 460px; width: 90%; padding: 32px; position: relative;
+}
+.shortcut-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; color: var(--gold);
+  margin-bottom: 20px; text-align: center;
+}
+.shortcut-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.shortcut-item {
+  display: flex; align-items: center; gap: 12px;
+  font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text-dim);
+}
+.shortcut-item kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; padding: 4px 10px; border-radius: 8px;
+  background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.3);
+  color: var(--gold); font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 700;
+}
+
+/* ============ AI ADVISOR PANEL ============ */
+.advisor-overlay {
+  position: fixed; top:0; left:0; width:100%; height:100%; z-index: 300;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(6px);
+  display: none; justify-content: center; align-items: center;
+}
+.advisor-overlay.open { display: flex; }
+.advisor-panel {
+  max-width: 580px; width: 92%; max-height: 80vh; overflow-y: auto; padding: 28px; position: relative;
+}
+.advisor-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+}
+.advisor-header h2 {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: var(--gold); margin: 0;
+}
+.advisor-sub {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text-dim); margin-bottom: 18px;
+}
+.advisor-content { display: flex; flex-direction: column; gap: 16px; }
+.advisor-card {
+  padding: 16px; border-radius: 14px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border);
+}
+.advisor-card-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.advisor-card-title .adv-icon { font-size: 1.2rem; }
+.advisor-card-body {
+  font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text-dim); line-height: 1.6;
+}
+.advisor-card-body ul { list-style: none; padding: 0; }
+.advisor-card-body li { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.advisor-card-body li:last-child { border-bottom: none; }
+.advisor-card-body .highlight { color: var(--gold); font-weight: 700; }
+.advisor-card-body .dim { color: var(--text-dim); }
+.advisor-loading {
+  text-align: center; padding: 40px; color: var(--text-dim);
+  font-family: 'DM Mono', monospace; font-size: 0.8rem;
+}
+
+/* ============ COLLECTION HEATMAP ============ */
+.stat-card-wide { grid-column: span 2; }
+.heatmap-wrap { width: 100%; overflow-x: auto; padding: 4px 0; }
+.heatmap-wrap svg { display: block; margin: 0 auto; }
+.heatmap-wrap text { fill: var(--text-dim); font-family: 'DM Mono', monospace; }
+
+/* ============ CONFETTI CANVAS ============ */
+#confettiCanvas {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 600; pointer-events: none;
+}
+
+/* ============ LIGHT MODE ADDITIONS ============ */
+body.light-mode .shortcut-overlay { background: rgba(255,255,255,0.7); }
+body.light-mode .shortcut-item kbd { background: rgba(184,134,11,0.1); border-color: rgba(184,134,11,0.3); }
+body.light-mode .advisor-overlay { background: rgba(255,255,255,0.6); }
+body.light-mode .advisor-card { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }
+body.light-mode .rarity-score-badge { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); }
+body.light-mode .lore-gen-btn { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); }
+body.light-mode .lore-text { background: rgba(160,70,26,0.04); border-color: rgba(160,70,26,0.1); }
+
+@media (max-width: 480px) {
+  .shortcut-grid { grid-template-columns: 1fr; }
+  .stat-card-wide { grid-column: span 1; }
+}
+
 @media (max-width: 768px) {
   .toast-container { top: 10px; right: 10px; }
   .toast { min-width: 220px; max-width: 280px; padding: 12px 14px; }
