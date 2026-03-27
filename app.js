@@ -16,6 +16,7 @@ let adminToken = null;
 let bulkMode = false;
 let bulkSelected = new Set();
 let unlockedAchievements = {};
+let communityFeedCache = [];
 
 const PRICE_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -1349,11 +1350,15 @@ function appendChatMsg(cls, text, links) {
 /* ============================================================
    EXPORT / IMPORT
    ============================================================ */
-function exportJSON() {
-  const exportData = ALL_CARDS.map(c => {
+function getCollectionExportData() {
+  return ALL_CARDS.map(c => {
     const st = getCardState(c.id);
     return { ...c, ...st };
   });
+}
+
+function exportJSON() {
+  const exportData = getCollectionExportData();
   downloadFile('trainer_vault_backup.json', JSON.stringify(exportData, null, 2), 'application/json');
 }
 
@@ -1510,8 +1515,13 @@ document.addEventListener('keydown', (e) => {
     case 's':
       shareCollection();
       break;
+    case 'c':
+      if (!e.ctrlKey && !e.metaKey) openCommunityPanel();
+      break;
     case 'escape':
       if (document.getElementById('shortcutOverlay').classList.contains('open')) closeShortcutOverlay();
+      else if (document.getElementById('shareOverlay').classList.contains('open')) closeSharePanel();
+      else if (document.getElementById('communityOverlay').classList.contains('open')) closeCommunityPanel();
       else if (document.getElementById('advisorOverlay').classList.contains('open')) closeAdvisorPanel();
       else if (document.getElementById('adminLoginOverlay').classList.contains('open')) closeAdminLogin();
       else if (document.getElementById('adminPanelOverlay').classList.contains('open')) closeAdminPanel();
@@ -1538,6 +1548,70 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const [year, month, day] = String(dateStr).split('-').map(Number);
+  if (![year, month, day].every(Number.isFinite)) return null;
+  return new Date(year, month - 1, day);
+}
+
+async function fetchJsonOrThrow(url, options) {
+  const resp = await fetch(url, options);
+  const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+  const text = await resp.text();
+  let data = null;
+
+  if (text) {
+    if (contentType.includes('application/json')) {
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Invalid JSON response');
+      }
+    } else {
+      const trimmed = text.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          data = JSON.parse(trimmed);
+        } catch (e) {
+          throw new Error(trimmed.slice(0, 80));
+        }
+      } else {
+        throw new Error(trimmed.slice(0, 80) || `HTTP ${resp.status}`);
+      }
+    }
+  }
+
+  if (!resp.ok) {
+    throw new Error((data && (data.error || data.detail)) || `HTTP ${resp.status}`);
+  }
+
+  return data;
+}
+
+function loadCommunityFeedFromStorage() {
+  try {
+    const raw = localStorage.getItem('trainerVaultCommunityFeed');
+    const data = raw ? JSON.parse(raw) : [];
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveCommunityFeedToStorage(feed) {
+  try {
+    localStorage.setItem('trainerVaultCommunityFeed', JSON.stringify((feed || []).slice(0, 20)));
+  } catch (e) {}
 }
 
 /* ============================================================
@@ -1907,15 +1981,31 @@ function bulkClear() {
 }
 
 /* ============================================================
-   SHARE COLLECTION
+   SHARE COLLECTION + COMMUNITY
    ============================================================ */
 function shareCollection() {
+  openSharePanel();
+}
+
+function getCollectionSummaryData() {
   const total = ALL_CARDS.length;
   const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection).length;
   const pct = total ? Math.round((collected / total) * 100) : 0;
-  let val = 0;
-  ALL_CARDS.forEach(c => { const st = getCardState(c.id); if (st.purchasePrice) val += parseFloat(st.purchasePrice) || 0; });
+  let value = 0;
+  ALL_CARDS.forEach(c => {
+    const st = getCardState(c.id);
+    if (st.purchasePrice) value += parseFloat(st.purchasePrice) || 0;
+  });
+  const wantCount = ALL_CARDS.filter(c => getCardState(c.id).wantList).length;
+  const topEra = ERA_ORDER.map(era => ({
+    era,
+    cards: ALL_CARDS.filter(c => c.era === era && getCardState(c.id).inCollection).length
+  })).sort((a, b) => b.cards - a.cards)[0];
+  return { total, collected, pct, value, wantCount, topEra: topEra && topEra.cards ? topEra.era : 'None' };
+}
 
+function buildShareSummaryText() {
+  const { total, collected, pct, value } = getCollectionSummaryData();
   const eraLines = ERA_ORDER.map(era => {
     const eraTotal = ALL_CARDS.filter(c => c.era === era).length;
     const eraCollected = ALL_CARDS.filter(c => c.era === era && getCardState(c.id).inCollection).length;
@@ -1923,15 +2013,38 @@ function shareCollection() {
     return `${labels[era]}: ${eraCollected}/${eraTotal}`;
   }).join(' · ');
 
-  const text = `🎴 TRICARD SYNDICATE\n` +
+  return `🎴 TRICARD SYNDICATE\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `📊 ${collected}/${total} cards (${pct}%)\n` +
-    `💰 Value: $${val.toFixed(2)}\n` +
+    `💰 Value: $${value.toFixed(2)}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     eraLines + `\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `Pokémon Full Art Trainer Collection`;
+}
 
+function openSharePanel() {
+  const overlay = document.getElementById('shareOverlay');
+  const summaryCard = document.getElementById('shareSummaryCard');
+  if (!overlay || !summaryCard) return;
+  const summary = getCollectionSummaryData();
+  summaryCard.textContent =
+    `Collected: ${summary.collected}/${summary.total} (${summary.pct}%)\n` +
+    `Tracked value: $${summary.value.toFixed(2)}\n` +
+    `Want list: ${summary.wantCount}\n` +
+    `Strongest era: ${summary.topEra}`;
+  const statusEl = document.getElementById('communityPublishStatus');
+  if (statusEl) statusEl.textContent = '';
+  overlay.classList.add('open');
+}
+
+function closeSharePanel() {
+  const overlay = document.getElementById('shareOverlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function shareCollectionSummary() {
+  const text = buildShareSummaryText();
   if (navigator.share) {
     navigator.share({ title: 'Tricard Syndicate', text }).catch(() => {});
   } else {
@@ -1939,6 +2052,184 @@ function shareCollection() {
       showToast('📋 Copied!', 'Collection stats copied to clipboard');
     }).catch(() => {});
   }
+}
+
+async function shareWholeCollectionFile() {
+  const exportData = getCollectionExportData();
+  const jsonText = JSON.stringify(exportData, null, 2);
+  const file = new File([jsonText], 'trainer_vault_backup.json', { type: 'application/json' });
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        title: 'Trainer Vault Backup',
+        text: 'Full Trainer Vault collection backup',
+        files: [file]
+      });
+      return;
+    } catch(e) {}
+  }
+  downloadFile('trainer_vault_backup.json', jsonText, 'application/json');
+  showToast('Backup Ready', 'Downloaded full collection backup JSON');
+}
+
+async function copyWholeCollectionJson() {
+  const jsonText = JSON.stringify(getCollectionExportData(), null, 2);
+  try {
+    await navigator.clipboard.writeText(jsonText);
+    showToast('JSON Copied', 'Full collection JSON copied to clipboard');
+  } catch(e) {
+    downloadFile('trainer_vault_backup.json', jsonText, 'application/json');
+    showToast('Clipboard Blocked', 'Downloaded JSON backup instead');
+  }
+}
+
+async function publishCollectionToCommunity() {
+  const alias = document.getElementById('communityAlias').value.trim();
+  const title = document.getElementById('communityTitle').value.trim();
+  const note = document.getElementById('communityNote').value.trim();
+  const statusEl = document.getElementById('communityPublishStatus');
+  if (!statusEl) return;
+  if (!alias) {
+    statusEl.textContent = 'Display name is required.';
+    return;
+  }
+  statusEl.textContent = 'Publishing snapshot...';
+
+  try {
+    const data = await fetchJsonOrThrow('/api/community', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alias,
+        title,
+        note,
+        summary: getCollectionSummaryData(),
+        snapshot: getCollectionExportData()
+      })
+    });
+    statusEl.textContent = 'Published to community feed.';
+    showToast('Community Published', 'Your collection snapshot is live in the feed');
+    await refreshCommunityFeed();
+    openCommunityPanel();
+  } catch(e) {
+    // Fallback to local feed when API route is unavailable in current runtime.
+    const localFeed = loadCommunityFeedFromStorage();
+    const entry = {
+      id: `local-${Date.now()}`,
+      alias,
+      title,
+      note,
+      summary: getCollectionSummaryData(),
+      snapshot: getCollectionExportData(),
+      createdAt: Math.floor(Date.now() / 1000),
+      localOnly: true
+    };
+    localFeed.unshift(entry);
+    communityFeedCache = localFeed.slice(0, 20);
+    saveCommunityFeedToStorage(communityFeedCache);
+    renderCommunityFeed();
+    statusEl.textContent = 'Published locally on this device. Deploy /api/community to sync publicly.';
+    showToast('Local Community Save', 'Snapshot stored locally because API is unavailable');
+  }
+}
+
+function openCommunityPanel() {
+  closeSharePanel();
+  const overlay = document.getElementById('communityOverlay');
+  if (!overlay) return;
+  overlay.classList.add('open');
+  refreshCommunityFeed();
+}
+
+function closeCommunityPanel() {
+  const overlay = document.getElementById('communityOverlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+async function refreshCommunityFeed() {
+  const feedEl = document.getElementById('communityFeed');
+  if (!feedEl) return;
+  feedEl.innerHTML = '<div class="advisor-loading">Loading community snapshots...</div>';
+  try {
+    const data = await fetchJsonOrThrow('/api/community?limit=20');
+    communityFeedCache = Array.isArray(data) ? data : [];
+    saveCommunityFeedToStorage(communityFeedCache);
+    renderCommunityFeed();
+  } catch(e) {
+    communityFeedCache = loadCommunityFeedFromStorage();
+    if (communityFeedCache.length) {
+      renderCommunityFeed();
+      feedEl.insertAdjacentHTML('afterbegin', `<div class="community-empty" style="margin-bottom:10px;">Live feed unavailable. Showing local community snapshots from this device.</div>`);
+    } else {
+      feedEl.innerHTML = `<div class="community-empty">Community feed unavailable: ${escapeHtml(e.message || 'request failed')}</div>`;
+    }
+  }
+}
+
+function renderCommunityFeed() {
+  const feedEl = document.getElementById('communityFeed');
+  if (!feedEl) return;
+  if (!communityFeedCache.length) {
+    feedEl.innerHTML = '<div class="community-empty">No community snapshots yet. Publish yours first.</div>';
+    return;
+  }
+  feedEl.innerHTML = communityFeedCache.map(entry => {
+    const summary = entry.summary || {};
+    const created = entry.createdAt ? new Date(entry.createdAt * 1000).toLocaleString() : 'Unknown';
+    return `<div class="community-card">
+      <div class="community-card-head">
+        <div>
+          <div class="community-card-title">${escapeHtml(entry.title || `${entry.alias}'s Vault`)}</div>
+          <div class="community-card-meta">by ${escapeHtml(entry.alias || 'Collector')} · ${escapeHtml(created)}${entry.localOnly ? ' · local only' : ''}</div>
+        </div>
+      </div>
+      ${entry.note ? `<div class="community-card-note">${escapeHtml(entry.note)}</div>` : ''}
+      <div class="community-card-stats">
+        <div class="community-stat"><span class="community-stat-label">Collected</span><span class="community-stat-value">${summary.collected || 0}/${summary.total || 0}</span></div>
+        <div class="community-stat"><span class="community-stat-label">Complete</span><span class="community-stat-value">${summary.pct || 0}%</span></div>
+        <div class="community-stat"><span class="community-stat-label">Value</span><span class="community-stat-value">$${Number(summary.value || 0).toFixed(0)}</span></div>
+        <div class="community-stat"><span class="community-stat-label">Want</span><span class="community-stat-value">${summary.wantCount || 0}</span></div>
+      </div>
+      <div class="community-card-actions">
+        <button class="action-btn gold" onclick="importCommunitySnapshot('${escapeHtml(entry.id || '')}')">Import Snapshot</button>
+        <button class="action-btn" onclick="copyCommunitySnapshot('${escapeHtml(entry.id || '')}')">Copy JSON</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function copyCommunitySnapshot(entryId) {
+  const entry = communityFeedCache.find(item => item.id === entryId);
+  if (!entry) return;
+  navigator.clipboard.writeText(JSON.stringify(entry.snapshot || [], null, 2)).then(() => {
+    showToast('Snapshot Copied', 'Community snapshot copied to clipboard');
+  }).catch(() => {
+    downloadFile('community_snapshot.json', JSON.stringify(entry.snapshot || [], null, 2), 'application/json');
+  });
+}
+
+function importCommunitySnapshot(entryId) {
+  const entry = communityFeedCache.find(item => item.id === entryId);
+  if (!entry || !Array.isArray(entry.snapshot)) return;
+  if (!confirm(`Replace your local collection with ${entry.alias || 'this'} snapshot?`)) return;
+
+  collectionState = {};
+  entry.snapshot.forEach(item => {
+    if (item && item.id != null) {
+      collectionState[item.id] = {
+        inCollection: !!item.inCollection,
+        condition: item.condition || null,
+        notes: item.notes || '',
+        purchasePrice: item.purchasePrice || null,
+        purchaseDate: item.purchaseDate || null,
+        wantList: !!item.wantList,
+      };
+    }
+  });
+  saveCollection();
+  applyFiltersAndRender();
+  closeCommunityPanel();
+  showToast('Community Snapshot Imported', `${entry.alias || 'Collector'} snapshot applied locally`);
 }
 
 /* ============================================================
@@ -2418,66 +2709,71 @@ function renderHeatmapCalendar() {
   const el = document.getElementById('heatmapCalendar');
   if (!el) return;
 
-  // Gather date data from collection
   const dateCounts = {};
-  ALL_CARDS.forEach(c => {
-    const st = getCardState(c.id);
+  ALL_CARDS.forEach(card => {
+    const st = getCardState(card.id);
     if (st.inCollection && st.purchaseDate) {
       dateCounts[st.purchaseDate] = (dateCounts[st.purchaseDate] || 0) + 1;
     }
   });
 
-  // Also use history data from localStorage
-  let history = [];
-  try { history = JSON.parse(localStorage.getItem('trainerVaultHistory') || '[]'); } catch(e) {}
+  // Fall back to history deltas if purchase dates are sparse.
+  if (!Object.keys(dateCounts).length) {
+    let history = [];
+    try { history = JSON.parse(localStorage.getItem('trainerVaultHistory') || '[]'); } catch(e) {}
+    history.forEach((item, index) => {
+      const prevCount = index > 0 ? history[index - 1].count : 0;
+      const added = Math.max(0, (item.count || 0) - prevCount);
+      if (item.date && added > 0) dateCounts[item.date] = added;
+    });
+  }
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 182); // ~26 weeks
+  startDate.setDate(startDate.getDate() - 182);
 
   const cellSize = 11, cellGap = 2, leftPad = 28, topPad = 16;
-  const totalCells = 183;
-  const weeks = Math.ceil(totalCells / 7);
+  const startGrid = new Date(startDate);
+  startGrid.setDate(startGrid.getDate() - startGrid.getDay());
+  const endGrid = new Date(today);
+  endGrid.setDate(endGrid.getDate() + (6 - endGrid.getDay()));
+  const totalDays = Math.round((endGrid - startGrid) / 86400000) + 1;
+  const weeks = Math.ceil(totalDays / 7);
   const svgW = leftPad + weeks * (cellSize + cellGap) + 4;
   const svgH = topPad + 7 * (cellSize + cellGap) + 4;
+  const maxCount = Math.max(1, ...Object.values(dateCounts), 1);
 
-  const maxCount = Math.max(1, ...Object.values(dateCounts));
-
-  const dayLabels = ['', 'M', '', 'W', '', 'F', ''];
+  const dayLabels = ['S', 'M', '', 'W', '', 'F', ''];
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   let svg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">`;
 
-  // Day labels
   for (let d = 0; d < 7; d++) {
     if (dayLabels[d]) {
       svg += `<text x="${leftPad - 6}" y="${topPad + d * (cellSize + cellGap) + cellSize - 2}" font-size="8" text-anchor="end">${dayLabels[d]}</text>`;
     }
   }
 
-  // Month labels
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  let lastMonth = -1;
-
-  const cursor = new Date(startDate);
-  // Adjust to start on Sunday
-  cursor.setDate(cursor.getDate() - cursor.getDay());
-
+  const monthLabelSeen = new Set();
+  const cursor = new Date(startGrid);
   for (let w = 0; w < weeks; w++) {
     for (let d = 0; d < 7; d++) {
-      const dateStr = cursor.toISOString().slice(0, 10);
+      const dateStr = formatLocalDate(cursor);
       const count = dateCounts[dateStr] || 0;
-
-      if (cursor.getDate() <= 7 && cursor.getMonth() !== lastMonth && d === 0) {
-        lastMonth = cursor.getMonth();
+      const monthKey = `${cursor.getFullYear()}-${cursor.getMonth()}`;
+      if (!monthLabelSeen.has(monthKey) && cursor.getDate() <= 7) {
+        monthLabelSeen.add(monthKey);
         svg += `<text x="${leftPad + w * (cellSize + cellGap)}" y="${topPad - 4}" font-size="7">${monthNames[cursor.getMonth()]}</text>`;
       }
 
-      if (cursor <= today && cursor >= startDate) {
-        const intensity = count > 0 ? Math.min(1, count / maxCount * 0.8 + 0.2) : 0;
-        const fill = count === 0 ? 'rgba(255,255,255,0.04)' :
-          `rgba(255,215,0,${(intensity * 0.7 + 0.15).toFixed(2)})`;
+      if (cursor >= startDate && cursor <= today) {
+        const ratio = count > 0 ? Math.min(1, count / maxCount) : 0;
+        const fill = count === 0
+          ? 'rgba(255,255,255,0.04)'
+          : `rgba(255,215,0,${(0.18 + ratio * 0.7).toFixed(2)})`;
         const rx = leftPad + w * (cellSize + cellGap);
         const ry = topPad + d * (cellSize + cellGap);
-        svg += `<rect x="${rx}" y="${ry}" width="${cellSize}" height="${cellSize}" rx="2" fill="${fill}" stroke="rgba(255,255,255,0.03)"><title>${dateStr}: ${count} card${count !== 1 ? 's' : ''}</title></rect>`;
+        svg += `<rect x="${rx}" y="${ry}" width="${cellSize}" height="${cellSize}" rx="2" fill="${fill}" stroke="rgba(255,255,255,0.03)"><title>${dateStr}: ${count} card${count !== 1 ? 's' : ''} added</title></rect>`;
       }
 
       cursor.setDate(cursor.getDate() + 1);
@@ -2488,7 +2784,19 @@ function renderHeatmapCalendar() {
 
   const totalDates = Object.keys(dateCounts).length;
   const totalAdded = Object.values(dateCounts).reduce((a, b) => a + b, 0);
-  el.innerHTML = svg + `<div style="font-size:0.55rem;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:4px;text-align:center;">${totalAdded} cards across ${totalDates} day${totalDates !== 1 ? 's' : ''}</div>`;
+  const legend = `
+    <div class="heatmap-meta">
+      <span>${totalAdded} additions across ${totalDates} day${totalDates !== 1 ? 's' : ''}</span>
+      <span class="heatmap-legend">
+        <span>Less</span>
+        <span class="heatmap-dot" style="background:rgba(255,255,255,0.04)"></span>
+        <span class="heatmap-dot" style="background:rgba(255,215,0,0.28)"></span>
+        <span class="heatmap-dot" style="background:rgba(255,215,0,0.5)"></span>
+        <span class="heatmap-dot" style="background:rgba(255,215,0,0.82)"></span>
+        <span>More</span>
+      </span>
+    </div>`;
+  el.innerHTML = svg + legend;
 }
 
 /* ============================================================

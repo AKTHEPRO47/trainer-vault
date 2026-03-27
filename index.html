@@ -70,6 +70,10 @@
         <svg viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
         <span class="nav-btn-tooltip">Share</span>
       </button>
+      <button class="nav-btn" onclick="openCommunityPanel()" title="Community Vault">
+        <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 3-1.79 3-4s-1.34-4-3-4-3 1.79-3 4 1.34 4 3 4z"/><path d="M8 11c1.66 0 3-1.79 3-4S9.66 3 8 3 5 4.79 5 7s1.34 4 3 4z"/><path d="M8 13c-2.67 0-8 1.34-8 4v2h10"/><path d="M16 13c2.67 0 8 1.34 8 4v2H10"/></svg>
+        <span class="nav-btn-tooltip">Community</span>
+      </button>
       <button class="nav-btn" onclick="openAdvisorPanel()" title="AI Advisor">
         <svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 014 4v1a2 2 0 012 2v3a8 8 0 01-16 0V9a2 2 0 012-2V6a4 4 0 014-4z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="11" r="1" fill="currentColor"/><circle cx="15" cy="11" r="1" fill="currentColor"/><path d="M9 16c1.5 1 4.5 1 6 0" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
         <span class="nav-btn-tooltip">AI Advisor</span>
@@ -439,10 +443,40 @@
       <div class="shortcut-item"><kbd>P</kbd><span>Price Oracle</span></div>
       <div class="shortcut-item"><kbd>B</kbd><span>Bulk Select</span></div>
       <div class="shortcut-item"><kbd>S</kbd><span>Share Collection</span></div>
+      <div class="shortcut-item"><kbd>C</kbd><span>Community Vault</span></div>
       <div class="shortcut-item"><kbd>T</kbd><span>Cycle Theme</span></div>
       <div class="shortcut-item"><kbd>A</kbd><span>AI Advisor</span></div>
       <div class="shortcut-item"><kbd>?</kbd><span>This Panel</span></div>
       <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SHARE PANEL ============ -->
+<div class="share-overlay" id="shareOverlay" onclick="if(event.target===this)closeSharePanel()">
+  <div class="share-panel glass">
+    <button class="modal-close" onclick="closeSharePanel()">&#10005;</button>
+    <div class="share-header">
+      <h2>Share Your Vault</h2>
+      <div class="share-sub">Share a quick summary, the full collection backup, or publish to the community feed.</div>
+    </div>
+    <div class="share-summary-card" id="shareSummaryCard"></div>
+    <div class="share-actions-grid">
+      <button class="action-btn gold" onclick="shareCollectionSummary()">Share Summary</button>
+      <button class="action-btn gold" onclick="shareWholeCollectionFile()">Share Full JSON</button>
+      <button class="action-btn" onclick="copyWholeCollectionJson()">Copy Full JSON</button>
+      <button class="action-btn" onclick="exportJSON()">Download Backup</button>
+    </div>
+    <div class="share-publish-block">
+      <h3>Publish to Community</h3>
+      <input class="modal-input" id="communityAlias" placeholder="Display name">
+      <input class="modal-input" id="communityTitle" placeholder="Collection title (optional)">
+      <textarea class="modal-input" id="communityNote" placeholder="A short note about your collection (optional)"></textarea>
+      <div class="share-actions-grid share-actions-grid-compact">
+        <button class="action-btn gold" onclick="publishCollectionToCommunity()">Publish Snapshot</button>
+        <button class="action-btn" onclick="openCommunityPanel()">Browse Community</button>
+      </div>
+      <div class="community-status" id="communityPublishStatus"></div>
     </div>
   </div>
 </div>
@@ -458,6 +492,24 @@
     <div class="advisor-sub">Smart recommendations based on your collection</div>
     <div class="advisor-content" id="advisorContent">
       <div class="advisor-loading">Analyzing your collection...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ COMMUNITY PANEL ============ -->
+<div class="community-overlay" id="communityOverlay" onclick="if(event.target===this)closeCommunityPanel()">
+  <div class="community-panel glass">
+    <button class="modal-close" onclick="closeCommunityPanel()">&#10005;</button>
+    <div class="community-header">
+      <h2>Community Vault</h2>
+      <div class="community-sub">See published collection snapshots, copy them, or import one into your local vault.</div>
+    </div>
+    <div class="community-toolbar">
+      <button class="action-btn gold" onclick="refreshCommunityFeed()">Refresh Feed</button>
+      <button class="action-btn" onclick="openSharePanel()">Publish Yours</button>
+    </div>
+    <div class="community-feed" id="communityFeed">
+      <div class="advisor-loading">Loading community snapshots...</div>
     </div>
   </div>
 </div>

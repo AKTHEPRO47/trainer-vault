@@ -18,6 +18,7 @@ CORS(app)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COLLECTION_FILE = os.path.join(BASE_DIR, 'collection.json')
 CARDS_FILE = os.path.join(BASE_DIR, 'trainer_vault_cards.json')
+COMMUNITY_FILE = os.path.join(BASE_DIR, 'community.json')
 
 # Admin authentication (set via environment variables)
 ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH', '')
@@ -111,6 +112,58 @@ def save_collection():
     with open(COLLECTION_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     return jsonify({"status": "saved"})
+
+
+@app.route('/api/community', methods=['GET'])
+def get_community_feed():
+    limit = request.args.get('limit', default=20, type=int) or 20
+    limit = max(1, min(limit, 50))
+    if os.path.exists(COMMUNITY_FILE):
+        with open(COMMUNITY_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return jsonify(data[:limit])
+    return jsonify([])
+
+
+@app.route('/api/community', methods=['POST'])
+def publish_community_snapshot():
+    data = request.json or {}
+    alias = str(data.get('alias', '')).strip()
+    snapshot = data.get('snapshot')
+    summary = data.get('summary')
+    if not alias:
+        return jsonify({"error": "Alias is required"}), 400
+    if not isinstance(snapshot, list) or not isinstance(summary, dict):
+        return jsonify({"error": "Snapshot and summary are required"}), 400
+
+    alias = alias[:32]
+    title = str(data.get('title', '')).strip()[:60]
+    note = str(data.get('note', '')).strip()[:160]
+
+    feed = []
+    if os.path.exists(COMMUNITY_FILE):
+        with open(COMMUNITY_FILE, 'r', encoding='utf-8') as f:
+            existing = json.load(f)
+        if isinstance(existing, list):
+            feed = existing
+
+    entry = {
+        "id": secrets_mod.token_hex(6),
+        "alias": alias,
+        "title": title,
+        "note": note,
+        "summary": summary,
+        "snapshot": snapshot,
+        "createdAt": int(time_mod.time())
+    }
+    feed.insert(0, entry)
+    feed = feed[:50]
+
+    with open(COMMUNITY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(feed, f, indent=2, ensure_ascii=False)
+
+    return jsonify({"status": "published", "entry": entry}), 201
 
 
 # Price chat is now fully client-side — no backend API needed
