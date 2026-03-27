@@ -1444,6 +1444,10 @@ function openRandomCard() {
   openModal(ALL_CARDS[idx].id);
 }
 
+function openGitHubStar() {
+  window.open('https://github.com/AKTHEPRO47/trainer-vault', '_blank', 'noopener,noreferrer');
+}
+
 /* ============================================================
    RESET COLLECTION
    ============================================================ */
