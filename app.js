@@ -11,10 +11,13 @@ let quickScanOpen = false;
 let searchTimeout = null;
 let saveTimeout = null;
 let imageCache = {}; // cardId -> image URL
+let priceCache = {}; // cardId -> { data, timestamp }
 let adminToken = null;
 let bulkMode = false;
 let bulkSelected = new Set();
 let unlockedAchievements = {};
+
+const PRICE_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const CONDITIONS = ['Mint','NM','LP','MP','HP','HP+'];
 const ERA_ORDER = ['Black & White','XY','Sun & Moon','Sword & Shield','Scarlet & Violet','Mega Evolution'];
@@ -439,15 +442,66 @@ function renderSetAccordion() {
         <span class="set-count">${collected}/${info.cards.length}</span>
         <span class="set-arrow">▼</span>
       </div>
-      <div class="set-body">
+      <div class="set-body set-body-cards">
         ${info.cards.map(c => {
           const st = getCardState(c.id);
-          return `<span class="timeline-chip ${st.inCollection ? 'collected' : ''}" onclick="openModal(${c.id})">${escapeHtml(c.name)} (${escapeHtml(c.cardNumber)})</span>`;
+          return `<div class="set-card-thumb ${st.inCollection ? 'collected' : ''}" data-card-id="${c.id}" onclick="openModal(${c.id})">
+            <div class="set-card-img-wrap">
+              <img class="set-card-img" data-card-id="${c.id}" alt="${escapeHtml(c.name)}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" loading="lazy">
+            </div>
+            <div class="set-card-info">
+              <div class="set-card-name">${escapeHtml(c.name)}</div>
+              <div class="set-card-num">${escapeHtml(c.cardNumber)}</div>
+            </div>
+          </div>`;
         }).join('')}
       </div>
     `;
+
+    // Lazy-load images when accordion opens
+    const header = section.querySelector('.set-header');
+    header.addEventListener('click', () => {
+      setTimeout(() => {
+        if (section.classList.contains('open')) {
+          section.querySelectorAll('.set-card-img[data-card-id]').forEach(img => {
+            if (img.dataset.loaded) return;
+            const cardId = parseInt(img.dataset.cardId);
+            const card = ALL_CARDS.find(cc => cc.id === cardId);
+            if (card) {
+              const url = getCardThumbnailUrl(card);
+              if (url) {
+                img.src = url;
+                img.dataset.loaded = '1';
+                img.onerror = () => { img.style.display = 'none'; };
+              }
+            }
+          });
+        }
+      }, 50);
+    });
+
     container.appendChild(section);
   });
+}
+
+/* Helper: get a thumbnail URL for a card (cached or computed) */
+function getCardThumbnailUrl(card) {
+  if (imageCache[card.id] && imageCache[card.id] !== 'failed') return imageCache[card.id];
+
+  let setId = SET_IDS[card.set];
+  let num = card.cardNumber.split('/')[0].trim();
+
+  if (setId) {
+    const tgMatch = num.match(/^TG\d/);
+    const ggMatch = num.match(/^GG\d/);
+    if (tgMatch) setId += 'tg';
+    else if (ggMatch) setId += 'gg';
+    else if (card.set === 'Hidden Fates' && num.match(/^SV\d/)) setId = 'sma';
+    else if (card.set === 'SV Promos' && num.match(/^SV\d/)) num = num.replace(/^SV/, '');
+    else if (card.set === 'XY Promos') num = num.replace(/[a-z]+$/, '');
+    return `https://images.pokemontcg.io/${setId}/${num}.png`;
+  }
+  return null;
 }
 
 /* ============================================================
@@ -586,6 +640,23 @@ function openModal(cardId) {
   loreText.textContent = '';
   loreText.classList.remove('visible');
 
+  // Reset price results
+  const priceResults = document.getElementById('priceResults');
+  if (priceResults) priceResults.style.display = 'none';
+  const priceData = document.getElementById('priceData');
+  if (priceData) priceData.innerHTML = '';
+  const priceBtn = document.getElementById('priceCheckBtn');
+  if (priceBtn) {
+    priceBtn.disabled = false;
+    priceBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:16px;height:16px;display:inline-block;vertical-align:middle;stroke:currentColor;fill:none;stroke-width:2;margin-right:6px;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>Check Price`;
+  }
+
+  // Show cached prices immediately if available
+  const cached = priceCache[card.id];
+  if (cached && cached.data) {
+    renderPriceData(card, cached.data);
+  }
+
   // Load card image
   loadCardImage(card);
 
@@ -629,6 +700,16 @@ function openModal(cardId) {
   // Show admin controls if logged in
   const adminControls = document.getElementById('modalAdminControls');
   if (adminControls) adminControls.style.display = isAdminLoggedIn() ? 'block' : 'none';
+
+  // Auto-fetch prices on modal open (refresh stale cache silently)
+  const stale = !cached || (Date.now() - cached.timestamp > PRICE_CACHE_TTL_MS);
+  if (stale) {
+    setTimeout(() => {
+      if (currentModalCard && currentModalCard.id === card.id) {
+        fetchCardPrices({ silent: true });
+      }
+    }, 120);
+  }
 }
 
 function closeModal() {
@@ -923,10 +1004,248 @@ document.querySelectorAll('.quick-ask-btn').forEach(btn => {
 
 function askPriceBot() {
   if (!currentModalCard) return;
-  const panel = document.getElementById('chatbotPanel');
-  if (!panel.classList.contains('open')) toggleChatbot();
-  document.getElementById('chatInput').value = `Price check: ${currentModalCard.name} (${currentModalCard.cardNumber}) from ${currentModalCard.set}`;
-  sendChat();
+  fetchCardPrices({ force: true });
+}
+
+async function fetchCardPrices(options = {}) {
+  const { force = false, silent = false } = options;
+  if (!currentModalCard) return;
+  const card = currentModalCard;
+  const resultsEl = document.getElementById('priceResults');
+  const loadingEl = document.getElementById('priceLoading');
+  const dataEl = document.getElementById('priceData');
+  const btn = document.getElementById('priceCheckBtn');
+
+  const cached = priceCache[card.id];
+  const cacheFresh = !!(cached && cached.data && (Date.now() - cached.timestamp <= PRICE_CACHE_TTL_MS));
+  if (!force && cacheFresh) {
+    renderPriceData(card, cached.data);
+    return;
+  }
+
+  resultsEl.style.display = 'block';
+  loadingEl.style.display = silent ? 'none' : 'flex';
+  dataEl.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = silent ? 'Refreshing...' : 'Fetching...';
+
+  const params = new URLSearchParams({
+    name: card.name,
+    set: card.set,
+    number: card.cardNumber
+  });
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    const resp = await fetch(`/api/price-check?${params}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!resp.ok) {
+      let detail = '';
+      try {
+        const errJson = await resp.json();
+        detail = errJson.error || errJson.detail || '';
+      } catch(_) {}
+      throw new Error(`API ${resp.status}${detail ? `: ${detail}` : ''}`);
+    }
+    const data = await resp.json();
+
+    priceCache[card.id] = { data, timestamp: Date.now() };
+    renderPriceData(card, data);
+  } catch(e) {
+    // Fallback path: use public Pokemon TCG API directly from browser.
+    try {
+      const fallbackData = await fetchCardPricesFromPublicApi(card);
+      priceCache[card.id] = { data: fallbackData, timestamp: Date.now() };
+      renderPriceData(card, fallbackData);
+      showToast('Price Fallback Active', 'Loaded prices from Pokemon TCG API');
+    } catch(fallbackErr) {
+      loadingEl.style.display = 'none';
+      const tcgSearch = encodeURIComponent(`pokemon ${card.name} ${card.set} ${card.cardNumber}`);
+      dataEl.innerHTML = `<div class="price-no-data">Could not fetch prices right now.</div>
+        <div class="price-source-meta">API error: ${escapeHtml(String(e && e.message ? e.message : e))}</div>
+        <div class="price-source-meta">Fallback error: ${escapeHtml(String(fallbackErr && fallbackErr.message ? fallbackErr.message : fallbackErr))}</div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:8px;">
+          <a href="https://www.pricecharting.com/search-products?q=${encodeURIComponent(card.name + ' ' + card.set)}&type=prices" target="_blank" rel="noopener noreferrer" class="price-source-link">PriceCharting</a>
+          <a href="https://www.tcgplayer.com/search/pokemon/product?q=${tcgSearch}" target="_blank" rel="noopener noreferrer" class="price-source-link">TCGPlayer</a>
+        </div>`;
+      resultsEl.style.display = 'block';
+    }
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:16px;height:16px;display:inline-block;vertical-align:middle;stroke:currentColor;fill:none;stroke-width:2;margin-right:6px;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>Refresh Prices`;
+}
+
+function renderPriceData(card, data) {
+  const resultsEl = document.getElementById('priceResults');
+  const loadingEl = document.getElementById('priceLoading');
+  const dataEl = document.getElementById('priceData');
+  if (!resultsEl || !loadingEl || !dataEl) return;
+
+  loadingEl.style.display = 'none';
+  resultsEl.style.display = 'block';
+
+  let html = '';
+
+  if (data.pricecharting) {
+    const pc = data.pricecharting;
+    html += `<div class="price-source">
+      <div class="price-source-header">
+        <span class="price-source-name">PriceCharting</span>
+        ${pc.url ? `<a href="${escapeAttr(pc.url)}" target="_blank" rel="noopener noreferrer" class="price-source-link">View &rarr;</a>` : ''}
+      </div>`;
+    if (pc.prices && Object.keys(pc.prices).length > 0) {
+      html += '<div class="price-values">';
+      if (pc.prices.ungraded) html += `<div class="price-item"><span class="price-label">Ungraded</span><span class="price-amount">${escapeHtml(pc.prices.ungraded)}</span></div>`;
+      if (pc.prices.psa9) html += `<div class="price-item"><span class="price-label">Grade 7</span><span class="price-amount">${escapeHtml(pc.prices.psa9)}</span></div>`;
+      if (pc.prices.psa10) html += `<div class="price-item"><span class="price-label">Grade 8</span><span class="price-amount">${escapeHtml(pc.prices.psa10)}</span></div>`;
+      html += '</div>';
+    } else {
+      html += `<div class="price-no-data">No parsed prices. Open source to verify listing.</div>`;
+    }
+    if (pc.status) html += `<div class="price-source-meta">Status: ${escapeHtml(pc.status)}</div>`;
+    html += '</div>';
+  }
+
+  if (data.tcgplayer) {
+    const tc = data.tcgplayer;
+    html += `<div class="price-source">
+      <div class="price-source-header">
+        <span class="price-source-name">TCGPlayer</span>
+        ${tc.url ? `<a href="${escapeAttr(tc.url)}" target="_blank" rel="noopener noreferrer" class="price-source-link">View &rarr;</a>` : ''}
+      </div>`;
+    if (tc.market_price || tc.low_price) {
+      html += '<div class="price-values">';
+      if (tc.market_price) html += `<div class="price-item"><span class="price-label">Market</span><span class="price-amount">${escapeHtml(tc.market_price)}</span></div>`;
+      if (tc.low_price) html += `<div class="price-item"><span class="price-label">Low</span><span class="price-amount">${escapeHtml(tc.low_price)}</span></div>`;
+      html += '</div>';
+    } else {
+      html += `<div class="price-no-data">No parsed prices. Open source to verify listing.</div>`;
+    }
+    if (tc.status) html += `<div class="price-source-meta">Status: ${escapeHtml(tc.status)}</div>`;
+    html += '</div>';
+  }
+
+  const bestPrice = getBestParsedPrice(data);
+  if (bestPrice != null) {
+    const st = getCardState(card.id);
+    const deltaHtml = renderPriceDelta(st.purchasePrice, bestPrice);
+    html += `<div class="price-reco-row">
+      <div class="price-reco-main">
+        <span class="price-label">Best Live Price</span>
+        <span class="price-amount">$${bestPrice.toFixed(2)}</span>
+      </div>
+      <button class="price-mini-btn" onclick="applyFetchedPrice(${bestPrice.toFixed(2)})">Use As Purchase Price</button>
+    </div>
+    ${deltaHtml}`;
+  }
+
+  const fetchedAt = data.meta && data.meta.fetched_at ? new Date(data.meta.fetched_at * 1000) : new Date();
+  const cacheLabel = data.meta && data.meta.cached ? 'cached' : 'live';
+  html += `<div class="price-source-meta" style="margin-top:8px;">Updated: ${escapeHtml(fetchedAt.toLocaleString())} (${cacheLabel})</div>`;
+
+  dataEl.innerHTML = html;
+}
+
+async function fetchCardPricesFromPublicApi(card) {
+  const setIdRaw = SET_IDS[card.set];
+  if (!setIdRaw) throw new Error('No set ID mapping for this set');
+
+  let setId = setIdRaw;
+  let num = card.cardNumber.split('/')[0].trim();
+  const tgMatch = num.match(/^TG\d/i);
+  const ggMatch = num.match(/^GG\d/i);
+  if (tgMatch) setId += 'tg';
+  else if (ggMatch) setId += 'gg';
+  else if (card.set === 'Hidden Fates' && /^SV\d/i.test(num)) setId = 'sma';
+  else if (card.set === 'SV Promos' && /^SV\d/i.test(num)) num = num.replace(/^SV/i, '');
+  else if (card.set === 'XY Promos') num = num.replace(/[a-z]+$/i, '');
+
+  const q = encodeURIComponent(`set.id:${setId} number:${num}`);
+  const url = `https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=1&select=name,number,tcgplayer,cardmarket,set`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Pokemon TCG API ${resp.status}`);
+  const payload = await resp.json();
+  const c = payload && payload.data && payload.data[0];
+  if (!c) throw new Error('Card not found in Pokemon TCG API');
+
+  const tcg = c.tcgplayer || {};
+  const tcgPrices = tcg.prices || {};
+  const priceEntries = Object.values(tcgPrices).filter(Boolean);
+
+  let market = null;
+  let low = null;
+  for (const p of priceEntries) {
+    if (!market && typeof p.market === 'number') market = p.market;
+    if (!low && typeof p.low === 'number') low = p.low;
+    if (market && low) break;
+  }
+
+  // For pricecharting slot, use cardmarket trend/avg values as a fallback estimate.
+  const cm = c.cardmarket && c.cardmarket.prices ? c.cardmarket.prices : {};
+  const ungradedCandidate = typeof cm.trendPrice === 'number' ? cm.trendPrice : (typeof cm.averageSellPrice === 'number' ? cm.averageSellPrice : null);
+
+  return {
+    pricecharting: {
+      title: c.name || card.name,
+      prices: ungradedCandidate != null ? { ungraded: `$${Number(ungradedCandidate).toFixed(2)}` } : {},
+      url: `https://www.pricecharting.com/search-products?q=${encodeURIComponent(card.name + ' ' + card.set)}&type=prices`,
+      status: ungradedCandidate != null ? 'fallback-estimate' : 'no-data'
+    },
+    tcgplayer: {
+      title: c.name || card.name,
+      market_price: market != null ? `$${Number(market).toFixed(2)}` : null,
+      low_price: low != null ? `$${Number(low).toFixed(2)}` : null,
+      url: `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(`pokemon ${card.name} ${card.set} ${card.cardNumber}`)}`,
+      status: (market != null || low != null) ? 'fallback-api' : 'no-data'
+    },
+    meta: {
+      source: 'pokemon-tcg-fallback',
+      cached: false,
+      fetched_at: Math.floor(Date.now() / 1000)
+    }
+  };
+}
+
+function getBestParsedPrice(data) {
+  const candidates = [];
+  if (data.tcgplayer && data.tcgplayer.market_price) candidates.push(parseDollarAmount(data.tcgplayer.market_price));
+  if (data.pricecharting && data.pricecharting.prices && data.pricecharting.prices.ungraded) candidates.push(parseDollarAmount(data.pricecharting.prices.ungraded));
+  if (data.tcgplayer && data.tcgplayer.low_price) candidates.push(parseDollarAmount(data.tcgplayer.low_price));
+  const valid = candidates.filter(v => Number.isFinite(v) && v > 0);
+  if (!valid.length) return null;
+  return valid[0];
+}
+
+function parseDollarAmount(text) {
+  const m = String(text || '').match(/\$?\s*([\d,]+(?:\.\d{1,2})?)/);
+  if (!m) return NaN;
+  return parseFloat(m[1].replace(/,/g, ''));
+}
+
+function applyFetchedPrice(value) {
+  if (!currentModalCard) return;
+  const st = getCardState(currentModalCard.id);
+  st.purchasePrice = Number(value);
+  const priceInput = document.getElementById('modalPrice');
+  if (priceInput) priceInput.value = Number(value).toFixed(2);
+  saveCollection();
+  updateStats();
+  showToast('Price Applied', `$${Number(value).toFixed(2)} saved as purchase price`);
+}
+
+function renderPriceDelta(currentPurchase, livePrice) {
+  if (!Number.isFinite(currentPurchase) || currentPurchase <= 0) return '';
+  const delta = livePrice - currentPurchase;
+  const pct = (delta / currentPurchase) * 100;
+  const cls = delta > 0 ? 'price-delta-up' : delta < 0 ? 'price-delta-down' : 'price-delta-flat';
+  const sign = delta > 0 ? '+' : '';
+  return `<div class="price-delta ${cls}">Compared to your purchase: ${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(1)}%)</div>`;
+}
+
+function escapeAttr(str) {
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 async function sendChat() {

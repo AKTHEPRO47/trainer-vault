@@ -302,9 +302,16 @@
     </div>
 
     <div class="modal-section" style="text-align:center;">
-      <button class="action-btn gold" onclick="askPriceBot()" style="padding:12px 28px; font-size:0.9rem;">
-        <svg viewBox="0 0 24 24" style="width:16px;height:16px;display:inline-block;vertical-align:middle;stroke:currentColor;fill:none;stroke-width:2;margin-right:6px;"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Price Check
+      <button class="action-btn gold" onclick="fetchCardPrices()" id="priceCheckBtn" style="padding:12px 28px; font-size:0.9rem;">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;display:inline-block;vertical-align:middle;stroke:currentColor;fill:none;stroke-width:2;margin-right:6px;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>Check Price
       </button>
+      <div id="priceResults" class="price-results" style="display:none;">
+        <div class="price-results-loading" id="priceLoading" style="display:none;">
+          <div class="price-spinner"></div>
+          Fetching live prices...
+        </div>
+        <div id="priceData" class="price-data"></div>
+      </div>
     </div>
 
     <div class="modal-section" id="modalAdminControls" style="display:none; text-align:center; border-top:1px solid var(--glass-border); padding-top:16px; margin-top:8px;">

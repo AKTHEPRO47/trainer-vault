@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import hmac as hmac_mod
 import hashlib
 import base64
@@ -9,6 +10,7 @@ from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
+import requests as http_requests
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
@@ -112,6 +114,154 @@ def save_collection():
 
 
 # Price chat is now fully client-side — no backend API needed
+
+# ============ PRICE CHECK (scrape PriceCharting & TCGPlayer) ============
+
+_price_cache = {}  # key -> { data, timestamp }
+PRICE_CACHE_TTL = 600  # 10 minutes
+
+
+def _normalize_token(text):
+    return re.sub(r'[^a-z0-9]', '', (text or '').lower())
+
+
+def _score_line(line, card_name, card_number):
+    score = 0
+    line_low = line.lower()
+    number_norm = _normalize_token(card_number)
+    if number_norm and number_norm in _normalize_token(line):
+        score += 6
+    for token in re.findall(r'[a-z0-9]+', (card_name or '').lower()):
+        if len(token) >= 3 and token in line_low:
+            score += 1
+    return score
+
+
+def _fetch_mirror_markdown(url, timeout=20):
+    mirror_url = f"https://r.jina.ai/http://{url.replace('https://', '').replace('http://', '')}"
+    headers = {'User-Agent': 'TrainerVaultPriceBot/1.0'}
+    resp = http_requests.get(mirror_url, headers=headers, timeout=timeout)
+    if not resp.ok:
+        raise RuntimeError(f"Mirror fetch failed with status {resp.status_code}")
+    return resp.text
+
+
+def _parse_pricecharting(markdown, card_name, card_number):
+    table_lines = [ln.strip() for ln in markdown.splitlines() if 'pricecharting.com/game/' in ln and '$' in ln and '|' in ln]
+    if not table_lines:
+        return {"title": card_name, "prices": {}, "url": "", "status": "no-data"}
+
+    best_line = max(table_lines, key=lambda ln: _score_line(ln, card_name, card_number))
+
+    links = re.findall(r'\[([^\]]+)\]\((https?://www\.pricecharting\.com/game/[^)\s]+)', best_line)
+    title = card_name
+    product_url = ''
+    for text, url in links:
+        if not text.lower().startswith('image'):
+            title = text.strip()
+            product_url = url
+            break
+
+    prices_found = re.findall(r'\$\d[\d,]*(?:\.\d{2})?', best_line)
+    prices = {}
+    if len(prices_found) >= 1:
+        prices['ungraded'] = prices_found[0]
+    if len(prices_found) >= 2:
+        prices['psa9'] = prices_found[1]
+    if len(prices_found) >= 3:
+        prices['psa10'] = prices_found[2]
+
+    return {
+        "title": title,
+        "prices": prices,
+        "url": product_url,
+        "status": "ok" if prices else "partial",
+        "matched_line": best_line[:500]
+    }
+
+
+def _parse_tcgplayer(markdown, card_name, card_number):
+    lines = [ln.strip() for ln in markdown.splitlines() if 'Market Price:$' in ln and 'listings from $' in ln and '####' in ln]
+    if not lines:
+        return {"title": card_name, "market_price": None, "low_price": None, "url": "", "status": "no-data"}
+
+    best_line = max(lines, key=lambda ln: _score_line(ln, card_name, card_number))
+
+    title_match = re.search(r'####\s*(.*?)\s+\d+\s+listings\s+from\s+\$', best_line)
+    low_match = re.search(r'listings\s+from\s+(\$\d[\d,]*(?:\.\d{2})?)', best_line)
+    market_match = re.search(r'Market\s+Price:\s*(\$\d[\d,]*(?:\.\d{2})?)', best_line)
+    url_match = re.search(r'\]\((https?://www\.tcgplayer\.com/[^)\s]+)\)\s*$', best_line)
+
+    return {
+        "title": title_match.group(1).strip() if title_match else card_name,
+        "market_price": market_match.group(1) if market_match else None,
+        "low_price": low_match.group(1) if low_match else None,
+        "url": url_match.group(1) if url_match else '',
+        "status": "ok" if (market_match or low_match) else "partial",
+        "matched_line": best_line[:500]
+    }
+
+
+@app.route('/api/price-check', methods=['GET'])
+def price_check():
+    card_name = request.args.get('name', '').strip()
+    set_name = request.args.get('set', '').strip()
+    card_number = request.args.get('number', '').strip()
+
+    if not card_name:
+        return jsonify({"error": "Card name required"}), 400
+
+    cache_key = f"{card_name}|{set_name}|{card_number}"
+    now = time_mod.time()
+    if cache_key in _price_cache and now - _price_cache[cache_key]['timestamp'] < PRICE_CACHE_TTL:
+        cached_data = dict(_price_cache[cache_key]['data'])
+        cached_meta = dict(cached_data.get('meta', {}))
+        cached_meta['cached'] = True
+        cached_data['meta'] = cached_meta
+        return jsonify(cached_data)
+
+    results = {
+        "pricecharting": {"title": card_name, "prices": {}, "url": "", "status": "error"},
+        "tcgplayer": {"title": card_name, "market_price": None, "low_price": None, "url": "", "status": "error"},
+        "meta": {"source": "mirror", "cached": False, "fetched_at": int(now)}
+    }
+
+    pc_query = f"pokemon {card_name} {set_name}".strip()
+    pc_url = f"https://www.pricecharting.com/search-products?q={http_requests.utils.quote(pc_query)}&type=prices"
+    tcg_query = f"{card_name} {set_name} {card_number}".strip()
+    tcg_url = f"https://www.tcgplayer.com/search/pokemon/product?q={http_requests.utils.quote(tcg_query)}"
+
+    try:
+        pc_md = _fetch_mirror_markdown(pc_url)
+        results["pricecharting"] = _parse_pricecharting(pc_md, card_name, card_number)
+        if not results["pricecharting"].get("url"):
+            results["pricecharting"]["url"] = pc_url
+    except Exception as e:
+        results["pricecharting"] = {
+            "title": card_name,
+            "prices": {},
+            "url": pc_url,
+            "status": "error",
+            "error": str(e)
+        }
+
+    try:
+        tcg_md = _fetch_mirror_markdown(tcg_url)
+        results["tcgplayer"] = _parse_tcgplayer(tcg_md, card_name, card_number)
+        if not results["tcgplayer"].get("url"):
+            results["tcgplayer"]["url"] = tcg_url
+    except Exception as e:
+        results["tcgplayer"] = {
+            "title": card_name,
+            "market_price": None,
+            "low_price": None,
+            "url": tcg_url,
+            "status": "error",
+            "error": str(e)
+        }
+
+    _price_cache[cache_key] = {'data': results, 'timestamp': now}
+    return jsonify(results)
 
 
 # ============ ADMIN ENDPOINTS ============
