@@ -25,6 +25,16 @@ const CONDITIONS = ['Mint','NM','LP','MP','HP','HP+'];
 const ERA_ORDER = ['Black & White','XY','Sun & Moon','Sword & Shield','Scarlet & Violet','Mega Evolution'];
 const ERA_KEYS = { 'Black & White':'bw','XY':'xy','Sun & Moon':'sm','Sword & Shield':'ss','Scarlet & Violet':'sv','Mega Evolution':'mega' };
 
+function normalizeVariant(variant) {
+  const v = String(variant || '').trim().toLowerCase();
+  if (v.includes('special illustration rare')) return 'Special Illustration Rare';
+  if (v.includes('illustration rare')) return 'Illustration Rare';
+  if (v.includes('rainbow')) return 'Rainbow';
+  if (v.includes('secret')) return 'Secret';
+  if (v.includes('full art')) return 'Full Art';
+  return variant || 'Other';
+}
+
 /* ============================================================
    INIT
    ============================================================ */
@@ -231,7 +241,7 @@ function applyFiltersAndRender() {
   filteredCards = ALL_CARDS.filter(card => {
     const st = getCardState(card.id);
     if (activeEra !== 'All' && card.era !== activeEra) return false;
-    if (activeVariant !== 'All' && card.variant !== activeVariant) return false;
+    if (activeVariant !== 'All' && normalizeVariant(card.variant) !== activeVariant) return false;
     if (activeColl === 'Collected' && !st.inCollection) return false;
     if (activeColl === 'Not Collected' && st.inCollection) return false;
     if (activeColl === 'Want List' && !st.wantList) return false;
@@ -549,7 +559,7 @@ function renderWantList() {
    ============================================================ */
 function getEstimatedPrice(card) {
   const estimates = { 'Special Illustration Rare': 35, 'Illustration Rare': 12, 'Full Art': 8, 'Rainbow': 15, 'Secret': 10 };
-  return estimates[card.variant] || 5;
+  return estimates[normalizeVariant(card.variant)] || 5;
 }
 
 /* ============================================================
@@ -1060,7 +1070,6 @@ async function fetchCardPrices(options = {}) {
       const fallbackData = await fetchCardPricesFromPublicApi(card);
       priceCache[card.id] = { data: fallbackData, timestamp: Date.now() };
       renderPriceData(card, fallbackData);
-      showToast('Price Fallback Active', 'Loaded prices from Pokemon TCG API');
     } catch(fallbackErr) {
       loadingEl.style.display = 'none';
       const tcgSearch = encodeURIComponent(`pokemon ${card.name} ${card.set} ${card.cardNumber}`);
@@ -2248,7 +2257,8 @@ function renderVariantDonut() {
   const variants = {};
   ALL_CARDS.forEach(c => {
     if (getCardState(c.id).inCollection) {
-      variants[c.variant] = (variants[c.variant] || 0) + 1;
+      const key = normalizeVariant(c.variant);
+      variants[key] = (variants[key] || 0) + 1;
     }
   });
 
@@ -2387,8 +2397,8 @@ function renderVariantRadar() {
   const variantNames = ['Full Art', 'Illustration Rare', 'Special Illustration Rare', 'Rainbow', 'Secret'];
   const shortNames = ['FA', 'IR', 'SIR', 'Rain', 'Sec'];
   const data = variantNames.map(v => {
-    const total = ALL_CARDS.filter(c => c.variant === v).length;
-    const collected = ALL_CARDS.filter(c => c.variant === v && getCardState(c.id).inCollection).length;
+    const total = ALL_CARDS.filter(c => normalizeVariant(c.variant) === v).length;
+    const collected = ALL_CARDS.filter(c => normalizeVariant(c.variant) === v && getCardState(c.id).inCollection).length;
     return total > 0 ? collected / total : 0;
   });
 
@@ -2496,7 +2506,7 @@ function computeRarityScore(card) {
   let score = 0;
   // Variant weight (0-40)
   const variantScores = { 'Special Illustration Rare': 40, 'Rainbow': 30, 'Secret': 25, 'Illustration Rare': 18, 'Full Art': 10 };
-  score += variantScores[card.variant] || 5;
+  score += variantScores[normalizeVariant(card.variant)] || 5;
   // Era age bonus (0-25) — older = rarer
   const eraAge = { 'Black & White': 25, 'XY': 20, 'Sun & Moon': 15, 'Sword & Shield': 10, 'Scarlet & Violet': 5, 'Mega Evolution': 12 };
   score += eraAge[card.era] || 5;
@@ -2619,13 +2629,19 @@ function generateAdvisorInsights() {
 
   // 3. High-value targets (missing SIR and Rainbow cards)
   const highValue = missing
-    .filter(c => c.variant === 'Special Illustration Rare' || c.variant === 'Rainbow')
+    .filter(c => {
+      const v = normalizeVariant(c.variant);
+      return v === 'Special Illustration Rare' || v === 'Rainbow';
+    })
     .sort((a, b) => computeRarityScore(b) - computeRarityScore(a))
     .slice(0, 6);
 
   // 4. Collection personality
   const variantCounts = {};
-  collected.forEach(c => { variantCounts[c.variant] = (variantCounts[c.variant] || 0) + 1; });
+  collected.forEach(c => {
+    const v = normalizeVariant(c.variant);
+    variantCounts[v] = (variantCounts[v] || 0) + 1;
+  });
   const topVariant = Object.entries(variantCounts).sort((a, b) => b[1] - a[1])[0];
   const eraCounts = {};
   collected.forEach(c => { eraCounts[c.era] = (eraCounts[c.era] || 0) + 1; });
