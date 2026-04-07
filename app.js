@@ -17,6 +17,7 @@ let bulkMode = false;
 let bulkSelected = new Set();
 let unlockedAchievements = {};
 let communityFeedCache = [];
+let communityFeedPollTimer = null;
 
 const PRICE_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -1618,6 +1619,15 @@ function saveCommunityFeedToStorage(feed) {
   } catch (e) {}
 }
 
+function setCommunityLiveStatus(text, isOk) {
+  const el = document.getElementById('communityLiveStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.style.borderColor = isOk ? 'rgba(0,255,255,0.2)' : 'rgba(255,34,85,0.35)';
+  el.style.background = isOk ? 'rgba(0,255,255,0.08)' : 'rgba(255,34,85,0.10)';
+  el.style.color = isOk ? 'var(--cyan)' : 'var(--crimson)';
+}
+
 /* ============================================================
    ADMIN
    ============================================================ */
@@ -2102,6 +2112,7 @@ async function publishCollectionToCommunity() {
   try {
     const data = await fetchJsonOrThrow('/api/community', {
       method: 'POST',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         alias,
@@ -2116,24 +2127,8 @@ async function publishCollectionToCommunity() {
     await refreshCommunityFeed();
     openCommunityPanel();
   } catch(e) {
-    // Fallback to local feed when API route is unavailable in current runtime.
-    const localFeed = loadCommunityFeedFromStorage();
-    const entry = {
-      id: `local-${Date.now()}`,
-      alias,
-      title,
-      note,
-      summary: getCollectionSummaryData(),
-      snapshot: getCollectionExportData(),
-      createdAt: Math.floor(Date.now() / 1000),
-      localOnly: true
-    };
-    localFeed.unshift(entry);
-    communityFeedCache = localFeed.slice(0, 20);
-    saveCommunityFeedToStorage(communityFeedCache);
-    renderCommunityFeed();
-    statusEl.textContent = 'Published locally on this device. Deploy /api/community to sync publicly.';
-    showToast('Local Community Save', 'Snapshot stored locally because API is unavailable');
+    statusEl.textContent = `Publish failed: ${e.message || 'request failed'}`;
+    setCommunityLiveStatus('Live API unavailable', false);
   }
 }
 
@@ -2142,31 +2137,37 @@ function openCommunityPanel() {
   const overlay = document.getElementById('communityOverlay');
   if (!overlay) return;
   overlay.classList.add('open');
+  setCommunityLiveStatus('Connecting live feed...', true);
   refreshCommunityFeed();
+  clearInterval(communityFeedPollTimer);
+  communityFeedPollTimer = setInterval(() => {
+    if (document.getElementById('communityOverlay')?.classList.contains('open')) {
+      refreshCommunityFeed({ silent: true });
+    }
+  }, 30000);
 }
 
 function closeCommunityPanel() {
   const overlay = document.getElementById('communityOverlay');
   if (overlay) overlay.classList.remove('open');
+  clearInterval(communityFeedPollTimer);
+  communityFeedPollTimer = null;
 }
 
-async function refreshCommunityFeed() {
+async function refreshCommunityFeed(options = {}) {
+  const { silent = false } = options;
   const feedEl = document.getElementById('communityFeed');
   if (!feedEl) return;
-  feedEl.innerHTML = '<div class="advisor-loading">Loading community snapshots...</div>';
+  if (!silent) feedEl.innerHTML = '<div class="advisor-loading">Loading community snapshots...</div>';
   try {
-    const data = await fetchJsonOrThrow('/api/community?limit=20');
+    const data = await fetchJsonOrThrow(`/api/community?limit=20&_ts=${Date.now()}`, { cache: 'no-store' });
     communityFeedCache = Array.isArray(data) ? data : [];
-    saveCommunityFeedToStorage(communityFeedCache);
     renderCommunityFeed();
+    setCommunityLiveStatus(`Live • ${new Date().toLocaleTimeString()}`, true);
   } catch(e) {
-    communityFeedCache = loadCommunityFeedFromStorage();
-    if (communityFeedCache.length) {
-      renderCommunityFeed();
-      feedEl.insertAdjacentHTML('afterbegin', `<div class="community-empty" style="margin-bottom:10px;">Live feed unavailable. Showing local community snapshots from this device.</div>`);
-    } else {
-      feedEl.innerHTML = `<div class="community-empty">Community feed unavailable: ${escapeHtml(e.message || 'request failed')}</div>`;
-    }
+    communityFeedCache = [];
+    feedEl.innerHTML = `<div class="community-empty">Community live feed unavailable: ${escapeHtml(e.message || 'request failed')}</div>`;
+    setCommunityLiveStatus('Live API unavailable', false);
   }
 }
 
@@ -2184,7 +2185,7 @@ function renderCommunityFeed() {
       <div class="community-card-head">
         <div>
           <div class="community-card-title">${escapeHtml(entry.title || `${entry.alias}'s Vault`)}</div>
-          <div class="community-card-meta">by ${escapeHtml(entry.alias || 'Collector')} · ${escapeHtml(created)}${entry.localOnly ? ' · local only' : ''}</div>
+          <div class="community-card-meta">by ${escapeHtml(entry.alias || 'Collector')} · ${escapeHtml(created)}</div>
         </div>
       </div>
       ${entry.note ? `<div class="community-card-note">${escapeHtml(entry.note)}</div>` : ''}

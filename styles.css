@@ -1254,6 +1254,17 @@ body.light-mode .progress-ring .ring-bg { stroke: rgba(0,0,0,0.06); }
 .community-toolbar {
   display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
 }
+.community-live-status {
+  margin-left: auto;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,255,255,0.2);
+  background: rgba(0,255,255,0.08);
+  color: var(--cyan);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.3px;
+}
 .community-feed {
   display: grid; gap: 12px;
 }
@@ -1371,6 +1382,7 @@ body.light-mode .rarity-score-badge { background: rgba(184,134,11,0.08); border-
 body.light-mode .lore-gen-btn { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); }
 body.light-mode .lore-text { background: rgba(160,70,26,0.04); border-color: rgba(160,70,26,0.1); }
 body.light-mode .community-stat { background: rgba(184,134,11,0.06); border-color: rgba(184,134,11,0.12); }
+body.light-mode .community-live-status { background: rgba(0,136,170,0.08); border-color: rgba(0,136,170,0.22); color: #006080; }
 
 @media (max-width: 480px) {
   .shortcut-grid { grid-template-columns: 1fr; }
@@ -1388,4 +1400,5 @@ body.light-mode .community-stat { background: rgba(184,134,11,0.06); border-colo
   .bulk-bar .action-btn { padding: 6px 12px; font-size: 0.68rem; }
   .share-panel,
   .community-panel { width: 94%; padding: 22px 18px; }
+  .community-live-status { margin-left: 0; }
 }

@@ -22,7 +22,9 @@ export async function onRequestGet(context) {
   const limitRaw = Number(url.searchParams.get('limit') || 20);
   const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 20, 50));
   const feed = await loadFeed(context);
-  return Response.json(feed.slice(0, limit));
+  return Response.json(feed.slice(0, limit), {
+    headers: { 'Cache-Control': 'no-store, max-age=0' }
+  });
 }
 
 export async function onRequestPost(context) {
@@ -55,7 +57,10 @@ export async function onRequestPost(context) {
     feed.unshift(entry);
     const trimmed = feed.slice(0, MAX_ITEMS);
     await context.env.COLLECTION.put(FEED_KEY, JSON.stringify(trimmed));
-    return Response.json({ status: 'published', entry }, { status: 201 });
+    return Response.json({ status: 'published', entry }, {
+      status: 201,
+      headers: { 'Cache-Control': 'no-store, max-age=0' }
+    });
   } catch {
     return Response.json({ error: 'Publish failed' }, { status: 500 });
   }
