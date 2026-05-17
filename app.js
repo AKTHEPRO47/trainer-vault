@@ -2013,6 +2013,7 @@ function shareCollection() {
 function getCollectionSummaryData() {
   const total = ALL_CARDS.length;
   const collected = ALL_CARDS.filter(c => getCardState(c.id).inCollection).length;
+  const missingCount = Math.max(total - collected, 0);
   const pct = total ? Math.round((collected / total) * 100) : 0;
   let value = 0;
   ALL_CARDS.forEach(c => {
@@ -2024,11 +2025,29 @@ function getCollectionSummaryData() {
     era,
     cards: ALL_CARDS.filter(c => c.era === era && getCardState(c.id).inCollection).length
   })).sort((a, b) => b.cards - a.cards)[0];
-  return { total, collected, pct, value, wantCount, topEra: topEra && topEra.cards ? topEra.era : 'None' };
+  return {
+    total,
+    collected,
+    missingCount,
+    pct,
+    value,
+    wantCount,
+    topEra: topEra && topEra.cards ? topEra.era : 'None'
+  };
+}
+
+function getMissingCardsForShare(limit = 30) {
+  return ALL_CARDS
+    .filter(c => !getCardState(c.id).inCollection)
+    .sort((a, b) => {
+      if (a.set !== b.set) return a.set.localeCompare(b.set);
+      return String(a.cardNumber).localeCompare(String(b.cardNumber), undefined, { numeric: true });
+    })
+    .slice(0, Math.max(0, limit));
 }
 
 function buildShareSummaryText() {
-  const { total, collected, pct, value } = getCollectionSummaryData();
+  const { total, collected, missingCount, pct, value } = getCollectionSummaryData();
   const eraLines = ERA_ORDER.map(era => {
     const eraTotal = ALL_CARDS.filter(c => c.era === era).length;
     const eraCollected = ALL_CARDS.filter(c => c.era === era && getCardState(c.id).inCollection).length;
@@ -2039,9 +2058,27 @@ function buildShareSummaryText() {
   return `🎴 TRICARD SYNDICATE\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `📊 ${collected}/${total} cards (${pct}%)\n` +
+    `❌ Missing: ${missingCount}\n` +
     `💰 Value: $${value.toFixed(2)}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     eraLines + `\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `Pokémon Full Art Trainer Collection`;
+}
+
+function buildMissingShareText(limit = 30) {
+  const summary = getCollectionSummaryData();
+  const missingCards = getMissingCardsForShare(limit);
+  const hiddenCount = Math.max(summary.missingCount - missingCards.length, 0);
+  const lines = missingCards.map((card, idx) => `${idx + 1}. ${card.name} (${card.set} ${card.cardNumber})`);
+
+  return `🎯 TRICARD SYNDICATE - MISSING LIST\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `Missing: ${summary.missingCount}/${summary.total}\n` +
+    `Collected: ${summary.collected}/${summary.total} (${summary.pct}%)\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    (lines.length ? lines.join('\n') : 'Collection complete - nothing missing!') + `\n` +
+    (hiddenCount > 0 ? `...and ${hiddenCount} more missing cards` : '') + `\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `Pokémon Full Art Trainer Collection`;
 }
@@ -2053,6 +2090,7 @@ function openSharePanel() {
   const summary = getCollectionSummaryData();
   summaryCard.textContent =
     `Collected: ${summary.collected}/${summary.total} (${summary.pct}%)\n` +
+    `Missing: ${summary.missingCount}\n` +
     `Tracked value: $${summary.value.toFixed(2)}\n` +
     `Want list: ${summary.wantCount}\n` +
     `Strongest era: ${summary.topEra}`;
@@ -2073,6 +2111,17 @@ function shareCollectionSummary() {
   } else {
     navigator.clipboard.writeText(text).then(() => {
       showToast('📋 Copied!', 'Collection stats copied to clipboard');
+    }).catch(() => {});
+  }
+}
+
+function shareMissingCards() {
+  const text = buildMissingShareText(40);
+  if (navigator.share) {
+    navigator.share({ title: 'Tricard Syndicate Missing List', text }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 Copied!', 'Missing card list copied to clipboard');
     }).catch(() => {});
   }
 }
@@ -2200,6 +2249,7 @@ function renderCommunityFeed() {
       ${entry.note ? `<div class="community-card-note">${escapeHtml(entry.note)}</div>` : ''}
       <div class="community-card-stats">
         <div class="community-stat"><span class="community-stat-label">Collected</span><span class="community-stat-value">${summary.collected || 0}/${summary.total || 0}</span></div>
+        <div class="community-stat"><span class="community-stat-label">Missing</span><span class="community-stat-value">${summary.missingCount || Math.max((summary.total || 0) - (summary.collected || 0), 0)}</span></div>
         <div class="community-stat"><span class="community-stat-label">Complete</span><span class="community-stat-value">${summary.pct || 0}%</span></div>
         <div class="community-stat"><span class="community-stat-label">Value</span><span class="community-stat-value">$${Number(summary.value || 0).toFixed(0)}</span></div>
         <div class="community-stat"><span class="community-stat-label">Want</span><span class="community-stat-value">${summary.wantCount || 0}</span></div>
